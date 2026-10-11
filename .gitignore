@@ -5,12 +5,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Ambiente
+# Environment
 .env
 
 # Notebooks
 .ipynb_checkpoints/
 
-# Sistema
+# System
 .DS_Store
 .vscode/
+
+# Data files
+data/raw/
