@@ -1,0 +1,16 @@
+# Python / Poetry
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Ambiente
+.env
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
+.vscode/
