@@ -1,0 +1,21 @@
+[project]
+name = "data-quality-ecommerce"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Amadeu Chacar",email = "amadeuchacar1@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas (>=3.0.6,<4.0.0)",
+    "pyarrow (>=26.0.0,<27.0.0)",
+    "pyyaml (>=6.0.3,<7.0.0)",
+    "pytest (>=9.1.1,<10.0.0)",
+    "ruff (>=0.17.0,<0.18.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
