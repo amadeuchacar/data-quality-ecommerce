@@ -1,0 +1,14 @@
+# Project configuration
+environment: local
+
+local:
+  raw_path: "data/raw"
+  staging_path: "data/staging"
+  ingestion_logs_path: "reports/ingestion_logs"
+  contracts_path: "contracts"
+  dq_reports_path: "reports/dq_scorecards"
+  quality_history_path: "reports/quality_history"
+  alerts_path: "reports/alerts"
+  incidents_path: "reports/incidents"
+
+catalog_path: "catalog/inventory.yaml"
