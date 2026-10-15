@@ -1,0 +1,40 @@
+table: products
+owner: data-eng-team
+version: 1
+
+columns:
+  product_id:
+    type: string
+    nullable: false
+    unique: true
+  product_category_name:
+    type: string
+    nullable: true
+  product_name_lenght:
+    type: float
+    nullable: true
+  product_description_lenght:
+    type: float
+    nullable: true
+  product_photos_qty:
+    type: float
+    nullable: true
+  product_weight_g:
+    type: float
+    nullable: true
+    min_value: 0
+  product_length_cm:
+    type: float
+    nullable: true
+    min_value: 0
+  product_height_cm:
+    type: float
+    nullable: true
+    min_value: 0
+  product_width_cm:
+    type: float
+    nullable: true
+    min_value: 0
+
+sla:
+  min_expected_volume: 30000

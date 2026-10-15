@@ -1,0 +1,24 @@
+table: customers
+owner: data-eng-team
+version: 1
+
+columns:
+  customer_id:
+    type: string
+    nullable: false
+    unique: true
+  customer_unique_id:
+    type: string
+    nullable: false
+  customer_zip_code_prefix:
+    type: integer
+    nullable: false
+  customer_city:
+    type: string
+    nullable: false
+  customer_state:
+    type: string
+    nullable: false
+
+sla:
+  min_expected_volume: 90000

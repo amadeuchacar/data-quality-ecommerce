@@ -1,0 +1,33 @@
+table: order_items
+owner: data-eng-team
+version: 1
+primary_key: [order_id, order_item_id]
+
+columns:
+  order_id:
+    type: string
+    nullable: false
+  order_item_id:
+    type: integer
+    nullable: false
+  product_id:
+    type: string
+    nullable: false
+  seller_id:
+    type: string
+    nullable: false
+  shipping_limit_date:
+    type: timestamp
+    nullable: false
+  price:
+    type: float
+    nullable: false
+    min_value: 0
+    max_value: 10000
+  freight_value:
+    type: float
+    nullable: false
+    min_value: 0
+
+sla:
+  min_expected_volume: 100000

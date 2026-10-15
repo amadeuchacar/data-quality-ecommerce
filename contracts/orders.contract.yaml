@@ -1,0 +1,34 @@
+table: orders
+owner: data-eng-team
+version: 1
+
+columns:
+  order_id:
+    type: string
+    nullable: false
+    unique: true
+  customer_id:
+    type: string
+    nullable: false
+  order_status:
+    type: string
+    nullable: false
+    allowed_values: [delivered, shipped, canceled, invoiced, processing, unavailable, created, approved]
+  order_purchase_timestamp:
+    type: timestamp
+    nullable: false
+  order_approved_at:
+    type: timestamp
+    nullable: true
+  order_delivered_carrier_date:
+    type: timestamp
+    nullable: true
+  order_delivered_customer_date:
+    type: timestamp
+    nullable: true
+  order_estimated_delivery_date:
+    type: timestamp
+    nullable: false
+
+sla:
+  min_expected_volume: 90000
