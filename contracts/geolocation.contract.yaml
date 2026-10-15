@@ -1,0 +1,23 @@
+table: geolocation
+owner: data-eng-team
+version: 1
+
+columns:
+  geolocation_zip_code_prefix:
+    type: integer
+    nullable: false
+  geolocation_lat:
+    type: float
+    nullable: false
+  geolocation_lng:
+    type: float
+    nullable: false
+  geolocation_city:
+    type: string
+    nullable: false
+  geolocation_state:
+    type: string
+    nullable: false
+
+sla:
+  min_expected_volume: 900000

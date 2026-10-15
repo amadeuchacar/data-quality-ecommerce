@@ -1,0 +1,21 @@
+table: sellers
+owner: data-eng-team
+version: 1
+
+columns:
+  seller_id:
+    type: string
+    nullable: false
+    unique: true
+  seller_zip_code_prefix:
+    type: integer
+    nullable: false
+  seller_city:
+    type: string
+    nullable: false
+  seller_state:
+    type: string
+    nullable: false
+
+sla:
+  min_expected_volume: 3000

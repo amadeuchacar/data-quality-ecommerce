@@ -1,0 +1,26 @@
+table: order_payments
+owner: data-eng-team
+version: 1
+primary_key: [order_id, payment_sequential]
+
+columns:
+  order_id:
+    type: string
+    nullable: false
+  payment_sequential:
+    type: integer
+    nullable: false
+  payment_type:
+    type: string
+    nullable: false
+    allowed_values: [credit_card, boleto, voucher, debit_card, not_defined]
+  payment_installments:
+    type: integer
+    nullable: false
+  payment_value:
+    type: float
+    nullable: false
+    min_value: 0
+
+sla:
+  min_expected_volume: 95000

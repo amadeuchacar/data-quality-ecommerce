@@ -1,0 +1,31 @@
+table: order_reviews
+owner: data-eng-team
+version: 1
+primary_key: [review_id, order_id]   # review_id alone repeats across orders
+
+columns:
+  review_id:
+    type: string
+    nullable: false
+  order_id:
+    type: string
+    nullable: false
+  review_score:
+    type: integer
+    nullable: false
+    allowed_values: [1, 2, 3, 4, 5]
+  review_comment_title:
+    type: string
+    nullable: true
+  review_comment_message:
+    type: string
+    nullable: true
+  review_creation_date:
+    type: timestamp
+    nullable: false
+  review_answer_timestamp:
+    type: timestamp
+    nullable: false
+
+sla:
+  min_expected_volume: 90000

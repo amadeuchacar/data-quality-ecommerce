@@ -1,0 +1,131 @@
+# Metadata inventory
+# Each entry documents: file name, primary key, foreign keys, criticality and owner
+# This file is the source of truth, consumed by the ingestion script and in subsequent stages
+
+version: 1
+domain: e-commerce
+owner_default: "data-eng-team"   # applies to every table with owner: null (same owner as the contracts)
+
+tables:
+
+  orders:
+    file: olist_orders_dataset.csv
+    description: >
+      Order placed by a customer. Central table of the dataset - almost all
+      other tables connect to it directly or indirectly.
+    primary_key: order_id
+    foreign_keys:
+      - column: customer_id
+        references: customers.customer_id
+    criticality: high
+    owner: null
+    known_gotchas: >
+      order_approved_at, order_delivered_carrier_date, and order_delivered_customer_date can
+      legitimately be null for canceled or undelivered orders - this is not a quality error
+      by default, but requires an explicit business rule in the contract
+
+  customers:
+    file: olist_customers_dataset.csv
+    description: >
+      Customer location data at the time of the order.
+      customer_id is unique per order; customer_unique_id identifies the person
+      across multiple orders.
+    primary_key: customer_id
+    foreign_keys: []
+    criticality: medium
+    owner: null
+    known_gotchas: >
+      Semantic ambiguity: customer_id != customer
+      The same customer (customer_unique_id) can have multiple customer_ids, one per order.
+
+  order_items:
+    file: olist_order_items_dataset.csv
+    description: >
+      Items for each order, with price and freight per item.
+      An order can have multiple rows (multiple items/products).
+    primary_key: [order_id, order_item_id]
+    foreign_keys:
+      - column: order_id
+        references: orders.order_id
+      - column: product_id
+        references: products.product_id
+      - column: seller_id
+        references: sellers.seller_id
+    criticality: high
+    owner: null
+    known_gotchas: >
+      price and freight_value are the fields used to calculate revenue - natural
+      candidates for distribution monitoring and field lineage when calculating
+      total_order_value.
+
+  order_payments:
+    file: olist_order_payments_dataset.csv
+    description: Payment method(s) for each order. An order can have multiple payments.
+    primary_key: [order_id, payment_sequential]
+    foreign_keys:
+      - column: order_id
+        references: orders.order_id
+    criticality: high
+    owner: null
+    known_gotchas: >
+      payment_installments = 0 appears in some records with payment_type "not_defined" - a
+      candidate for validation rules (accepted_values) in the contract.
+  
+  order_reviews:
+    file: olist_order_reviews_dataset.csv
+    description: Customer rating (1-5) and comment on the order.
+    primary_key: [review_id, order_id]
+    foreign_keys:
+      - column: order_id
+        references: orders.order_id
+    criticality: medium
+    owner: null
+    known_gotchas: >
+      review_comment_title and review_comment_message have a very high null rate
+      (comments are optional) - this is expected, not a completeness issue.
+      review_id alone is NOT unique (814 rows share a review_id across different
+      orders) - the primary key is the pair (review_id, order_id).
+
+  products:
+    file: olist_products_dataset.csv
+    description: Physical and category attributes of each product.
+    primary_key: product_id
+    foreign_keys:
+      - column: product_category_name
+        references: category_translation.product_category_name
+    criticality: medium
+    owner: null
+    known_gotchas: >
+      product_category_name is in Portuguese and contains nulls; translation to English
+      depends on a join with category_translation (not every category has a translation).
+
+  sellers:
+    file: olist_sellers_dataset.csv
+    description: Seller location (marketplace).
+    primary_key: seller_id
+    foreign_keys: []
+    criticality: low
+    owner: null
+    known_gotchas: null
+
+  geolocation:
+    file: olist_geolocation_dataset.csv
+    description: >
+      Lat/lng coordinates per ZIP code prefix. Not 1:1 with customers/sellers - the same
+      zip_code_prefix has multiple rows (multiple observed coordinates).
+    primary_key: null   # no single PK - geographic reference table with expected duplicates
+    foreign_keys: []
+    criticality: low
+    owner: null
+    known_gotchas: >
+      Do not treat duplication here as a quality error (uniqueness) without understanding the
+      purpose of the table first.
+
+  category_translation:
+    file: product_category_name_translation.csv
+    description: Product category translation table (PT -> EN)
+    primary_key: product_category_name
+    foreign_keys: []
+    criticality: low
+    owner: null
+    known_gotchas: null

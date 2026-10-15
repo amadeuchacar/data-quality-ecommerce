@@ -1,0 +1,15 @@
+table: category_translation
+owner: data-eng-team
+version: 1
+
+columns:
+  product_category_name:
+    type: string
+    nullable: false
+    unique: true
+  product_category_name_english:
+    type: string
+    nullable: false
+
+sla:
+  min_expected_volume: 60

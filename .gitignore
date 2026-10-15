@@ -17,3 +17,9 @@ __pycache__/
 
 # Data files
 data/raw/
+data/staging/
+
+# Generated reports (keep only the folder placeholders)
+reports/**/*
+!reports/**/
+!reports/**/.gitkeep
