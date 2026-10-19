@@ -73,6 +73,47 @@ def load_contract(table_name: str, contracts_dir: Path) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def column_rule_violations(series: pd.Series, rules: dict[str, Any]) -> dict[str, pd.Series]:
+    """
+    Evaluates the value-level rules of one contract column (type, accepted values and
+    business ranges) and returns one boolean mask per rule, True where the value breaks it.
+
+    Single source of truth for "is this value valid?": the contract validator counts the
+    masks (pass/fail) and the DAMA Validity dimension turns them into a percentage.
+    Nulls are never flagged here - nullability is a completeness concern, checked apart.
+
+    Args:
+        series: the column values, as read
+        rules: the column rules declared in the contract
+
+    Returns:
+        A dict {rule_name: mask} with only the rules declared for the column.
+    """
+    masks: dict[str, pd.Series] = {}
+
+    caster = TYPE_CASTERS.get(rules.get("type"))
+    if caster is not None:
+        coerced = caster(series)
+        masks["type_mismatch"] = coerced.isna() & series.notna()
+    else:
+        coerced = series
+
+    allowed_values = rules.get("allowed_values")
+    if allowed_values is not None:
+        masks["unexpected_value"] = (coerced.notna() & ~coerced.isin(allowed_values)).astype(bool)
+
+    min_value = rules.get("min_value")
+    max_value = rules.get("max_value")
+    if min_value is not None or max_value is not None:
+        numeric = pd.to_numeric(coerced, errors="coerce")
+        if min_value is not None:
+            masks["below_min_value"] = (numeric < min_value).fillna(False).astype(bool)
+        if max_value is not None:
+            masks["above_max_value"] = (numeric > max_value).fillna(False).astype(bool)
+
+    return masks
+
+
 def _check_primary_key(df: pd.DataFrame, primary_key: str | list[str]) -> list[Violation]:
     """Checks that the (possibly composite) primary key is fully populated and unique."""
     key_columns = [primary_key] if isinstance(primary_key, str) else list(primary_key)
@@ -158,14 +199,11 @@ def validate_dataframe(df: pd.DataFrame, contract: dict[str, Any]) -> ContractVa
             continue    # Already reported above as missing_column
 
         series = df[col]
-        expected_type = rules.get("type")
+        rule_masks = column_rule_violations(series, rules)
 
         # 3a. Type / coercibility checks
-        if expected_type in TYPE_CASTERS:
-            coerced = TYPE_CASTERS[expected_type](series)
-            newly_null = coerced.isna() & series.notna()
-            n_failed_cast = int(newly_null.sum())
-
+        if "type_mismatch" in rule_masks:
+            n_failed_cast = int(rule_masks["type_mismatch"].sum())
             if n_failed_cast > 0:
                 violations.append(
                     Violation(
@@ -173,15 +211,11 @@ def validate_dataframe(df: pd.DataFrame, contract: dict[str, Any]) -> ContractVa
                         column=col,
                         detail=(
                             f"{n_failed_cast} value(s) could not be safely converted to "
-                            f"type '{expected_type}'."
+                            f"type '{rules.get('type')}'."
                         ),
                         severity="blocking"
                     )
                 )
-
-            series_for_checks = coerced
-        else:
-            series_for_checks = series
 
         # 3b. Nullability check
         n_nulls = int(series.isna().sum())
@@ -209,12 +243,10 @@ def validate_dataframe(df: pd.DataFrame, contract: dict[str, Any]) -> ContractVa
                 )
 
         # 3d. Accepted values check
-        allowed_values = rules.get("allowed_values")
-        if allowed_values is not None:
-            observed = set(series_for_checks.dropna().unique())
-            unexpected = observed - set(allowed_values)
-
-            if unexpected:
+        if "unexpected_value" in rule_masks:
+            mask = rule_masks["unexpected_value"]
+            if mask.any():
+                unexpected = set(series[mask].unique())
                 violations.append(
                     Violation(
                         rule="unexpected_value",
@@ -225,34 +257,29 @@ def validate_dataframe(df: pd.DataFrame, contract: dict[str, Any]) -> ContractVa
                 )
 
         # 3e. Business ranges check (min_value / max_value)
-        min_value = rules.get("min_value")
-        max_value = rules.get("max_value")
-        if min_value is not None or max_value is not None:
-            numeric = pd.to_numeric(series_for_checks, errors="coerce")
-
-            if min_value is not None:
-                n_below = int((numeric < min_value).sum())
-                if n_below > 0:
-                    violations.append(
-                        Violation(
-                            rule="below_min_value",
-                            column=col,
-                            detail=f"{n_below} value(s) below the allowed minimum ({min_value}).",
-                            severity="blocking"
-                        )
+        if "below_min_value" in rule_masks:
+            n_below = int(rule_masks["below_min_value"].sum())
+            if n_below > 0:
+                violations.append(
+                    Violation(
+                        rule="below_min_value",
+                        column=col,
+                        detail=f"{n_below} value(s) below the allowed minimum ({rules['min_value']}).",
+                        severity="blocking"
                     )
+                )
 
-            if max_value is not None:
-                n_above = int((numeric > max_value).sum())
-                if n_above > 0:
-                    violations.append(
-                        Violation(
-                            rule="above_max_value",
-                            column=col,
-                            detail=f"{n_above} value(s) above the allowed maximum ({max_value}).",
-                            severity="blocking"
-                        )
+        if "above_max_value" in rule_masks:
+            n_above = int(rule_masks["above_max_value"].sum())
+            if n_above > 0:
+                violations.append(
+                    Violation(
+                        rule="above_max_value",
+                        column=col,
+                        detail=f"{n_above} value(s) above the allowed maximum ({rules['max_value']}).",
+                        severity="blocking"
                     )
+                )
 
     # 4. Table-level primary key check (supports composite keys)
     primary_key = contract.get("primary_key")
