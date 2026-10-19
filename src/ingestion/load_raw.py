@@ -25,30 +25,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml
 
+from src.config import PROJECT_ROOT, load_catalog, load_settings
 from src.ingestion.contract_validator import load_contract, validate_dataframe
 from src.ingestion.type_casting import cast_to_contract
 from src.monitoring.history_store import append_snapshot, build_snapshot
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-
-def load_settings(path: Path = PROJECT_ROOT / "config" / "settings.yaml") -> dict[str, Any]:
-    with open(path, encoding="utf-8") as f:
-        settings = yaml.safe_load(f)
-
-    env = settings["environment"]
-    resolved = settings[env]
-    resolved["catalog_path"] = settings["catalog_path"]
-    resolved["environment"] = env
-
-    return resolved
-
-
-def load_catalog(catalog_path: Path) -> dict[str, Any]:
-    with open(catalog_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def ingest_table(
