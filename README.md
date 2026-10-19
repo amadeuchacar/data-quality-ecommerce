@@ -13,8 +13,9 @@ This project puts into practice the mechanisms proposed to reduce this risk: dat
 | Stage | Status |
 |---|---|
 | 1. Ingestion with data contracts (raw -> staging) | Done |
-| 2. Observability pillars (freshness, volume, schema, distribution) | Planned |
-| 3. Lineage, SLAs/SLIs/SLOs, incident management and certification | Planned |
+| 2. Quality dimensions scorecard (DAMA UK) on staging | Done |
+| 3. Observability pillars (freshness, volume, schema, distribution) | Planned |
+| 4. Lineage, SLAs/SLIs/SLOs, incident management and certification | Planned |
 
 ## Project Structure
 
@@ -25,9 +26,11 @@ contracts/*.contract.yaml     # one data contract per table
 data/raw/                     # original Olist CSVs (not versioned)
 data/staging/                 # validated and typed Parquet files (not versioned)
 reports/ingestion_logs/       # JSON log per execution (not versioned)
-reports/dq_scorecards/        # Markdown quality report per execution (not versioned)
+reports/dq_scorecards/        # contract reports and DAMA scorecards per execution (not versioned)
 reports/quality_history/      # metric snapshots per table, the baseline for observability (not versioned)
+src/config.py                 # shared settings and catalog loaders
 src/ingestion/                # ingestion pipeline, contract validator and type casting
+src/quality/                  # DAMA UK quality dimensions scorecard
 src/monitoring/               # metric history store
 tests/                        # unit tests
 ```
@@ -48,6 +51,12 @@ poetry run python -m src.ingestion.load_raw
 ```
 
 The process exits with code `0` when every table reaches staging and `1` when at least one table is blocked.
+
+3. **Generate the DAMA quality scorecard** (reads the staging layer, so run it after the ingestion):
+
+```bash
+poetry run python -m src.quality.dimensions_dama
+```
 
 ## Stage 1 - Ingestion with Data Contracts
 
@@ -102,6 +111,26 @@ Some behaviors of the dataset are expected and documented in the catalog so they
 - `order_reviews`: `review_id` alone is not unique - the primary key is `(review_id, order_id)`.
 - `geolocation`: the same ZIP code prefix has multiple rows, so there is no primary key.
 - `products`: the columns `product_name_lenght` and `product_description_lenght` are misspelled in the source file and are kept as they are.
+
+## Stage 2 - Quality Dimensions Scorecard (DAMA UK)
+
+The contract answers **"pass or fail?"**. The scorecard answers **"how good, in percent?"**, measuring 4 of the 6 [DAMA UK](https://www.dama-uk.org/) data quality dimensions on every staging table:
+
+| Dimension | What it measures | Source of the rule |
+|---|---|---|
+| Completeness | % of non-null values per column | contract (`nullable`) |
+| Uniqueness | % of rows not duplicated on the primary key | catalog (`primary_key`) |
+| Validity | % of values respecting type, accepted values and ranges | contract (same rules as the validator) |
+| Consistency | % of foreign key values found in the parent table | catalog (`foreign_keys`) |
+
+Timeliness and Accuracy are not covered yet: the first belongs to the freshness pillar (Stage 3), the second needs a trusted reference source the dataset does not provide.
+
+Since only tables that passed their contract reach staging, **Validity and Uniqueness work as a certification of the gate** and are expected to be 100%. The gradual signal comes from:
+
+- **Consistency** - a cross-table check that the per-table contract cannot make. It currently finds orphan values in `customers` and `sellers` (ZIP code prefixes without coordinates in `geolocation`) and in `products` (categories without an English translation).
+- **Completeness of optional columns** - reported per column (marked as *optional*) but left out of the table summary, because nulls there are expected.
+
+Each execution writes `dama_scorecard_<timestamp>.json` and `.md` to `reports/dq_scorecards/`. The Markdown starts with a summary table (the worst column or relation of each table per dimension) followed by the details per column. These percentages are natural SLIs for the SLO stage.
 
 ## Tests and Lint
 
