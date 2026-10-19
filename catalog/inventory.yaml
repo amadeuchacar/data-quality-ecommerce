@@ -31,12 +31,16 @@ tables:
       customer_id is unique per order; customer_unique_id identifies the person
       across multiple orders.
     primary_key: customer_id
-    foreign_keys: []
+    foreign_keys:
+      - column: customer_zip_code_prefix
+        references: geolocation.geolocation_zip_code_prefix
     criticality: medium
     owner: null
     known_gotchas: >
       Semantic ambiguity: customer_id != customer
       The same customer (customer_unique_id) can have multiple customer_ids, one per order.
+      A few ZIP code prefixes (278 rows) have no coordinates in geolocation - measured by
+      the DAMA Consistency dimension, not blocked by the contract.
 
   order_items:
     file: olist_order_items_dataset.csv
@@ -103,10 +107,14 @@ tables:
     file: olist_sellers_dataset.csv
     description: Seller location (marketplace).
     primary_key: seller_id
-    foreign_keys: []
+    foreign_keys:
+      - column: seller_zip_code_prefix
+        references: geolocation.geolocation_zip_code_prefix
     criticality: low
     owner: null
-    known_gotchas: null
+    known_gotchas: >
+      A few ZIP code prefixes (7 rows) have no coordinates in geolocation - measured by the
+      DAMA Consistency dimension, not blocked by the contract.
 
   geolocation:
     file: olist_geolocation_dataset.csv
