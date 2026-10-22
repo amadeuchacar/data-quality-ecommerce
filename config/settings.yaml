@@ -12,3 +12,4 @@ local:
   incidents_path: "reports/incidents"
 
 catalog_path: "catalog/inventory.yaml"
+slo_path: "config/slo.yaml"

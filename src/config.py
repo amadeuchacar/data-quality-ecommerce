@@ -20,8 +20,9 @@ def load_settings(path: Path = PROJECT_ROOT / "config" / "settings.yaml") -> dic
         settings = yaml.safe_load(f)
 
     env = settings["environment"]
-    resolved = settings[env]
+    resolved = dict(settings[env])
     resolved["catalog_path"] = settings["catalog_path"]
+    resolved["slo_path"] = settings["slo_path"]
     resolved["environment"] = env
 
     return resolved

@@ -1,0 +1,52 @@
+# SLOs (Service Level Objectives)
+#
+# SLA = the agreement (documented here, in the description of each item)
+# SLI = the measured metric (the corresponding pillar: freshness/volume/schema/distribution)
+# SLO = the target that the SLI must meet (the numeric fields below)
+#
+# "insufficient_history" never counts as an SLO failure — it simply means there is not yet
+# enough data to assert anything.
+
+slos:
+  - id: orders_freshness
+    table: orders
+    pillar: freshness
+    description: >
+      The 'orders' table is the most critical in the domain (virtually everything depends on it
+      via lineage) and must not go more than 24h without a successful ingestion.
+    max_delay_hours: 24
+
+  - id: orders_volume_stability
+    table: orders
+    pillar: volume
+    description: >
+      The volume of 'orders' must not deviate by more than 3 standard deviations from history —
+      an abrupt drop or spike typically indicates an upstream failure (Chapter 4).
+    z_threshold: 3.0
+    method: moving   # zscore | moving | ewma  (baseline: full history vs sliding window)
+    window: 10       # number of recent executions used as baseline
+
+  - id: order_items_distribution_stability
+    table: order_items
+    pillar: distribution
+    description: >
+      The value distribution in 'order_items' (price, freight_value) and the null rate
+      must not deviate from historical patterns — changes here directly impact revenue metrics.
+    z_threshold: 3.0
+    method: moving   # zscore | moving | ewma  (baseline: full history vs sliding window)
+    window: 10       # number of recent executions used as baseline
+
+  - id: order_reviews_schema_stability
+    table: order_reviews
+    pillar: schema
+    description: >
+      'order_reviews' must not undergo schema changes without explicit contract review —
+      it is the most widely used table for customer satisfaction metrics.
+
+  - id: products_freshness
+    table: products
+    pillar: freshness
+    description: >
+      The 'products' table is updated less frequently than orders; we tolerate up to 48h
+      without a successful ingestion before considering a freshness issue.
+    max_delay_hours: 48
