@@ -14,24 +14,29 @@ This project puts into practice the mechanisms proposed to reduce this risk: dat
 |---|---|
 | 1. Ingestion with data contracts (raw -> staging) | Done |
 | 2. Quality dimensions scorecard (DAMA UK) on staging | Done |
-| 3. Observability pillars (freshness, volume, schema, distribution) | Planned |
-| 4. Lineage, SLAs/SLIs/SLOs, incident management and certification | Planned |
+| 3. Observability pillars, SLOs, alerts and incidents | Done |
+| 4. Curated layer, field-level lineage, certification and root cause analysis | Planned |
 
 ## Project Structure
 
 ```
 catalog/inventory.yaml        # metadata inventory: files, primary/foreign keys, criticality, owner, known gotchas
 config/settings.yaml          # paths per environment
+config/slo.yaml               # Service Level Objectives per table and pillar
 contracts/*.contract.yaml     # one data contract per table
 data/raw/                     # original Olist CSVs (not versioned)
 data/staging/                 # validated and typed Parquet files (not versioned)
 reports/ingestion_logs/       # JSON log per execution (not versioned)
 reports/dq_scorecards/        # contract reports and DAMA scorecards per execution (not versioned)
 reports/quality_history/      # metric snapshots per table, the baseline for observability (not versioned)
+reports/alerts/               # alerts.jsonl (not versioned)
+reports/incidents/            # incidents.jsonl and resolutions.jsonl (not versioned)
+orchestration/                # local end-to-end pipeline
 src/config.py                 # shared settings and catalog loaders
 src/ingestion/                # ingestion pipeline, contract validator and type casting
-src/quality/                  # DAMA UK quality dimensions scorecard
-src/monitoring/               # metric history store
+src/quality/                  # DAMA scorecard, observability pillars, SLO evaluation and checks runner
+src/monitoring/               # metric history store, anomaly detection and alerting
+src/incidents/                # incident and resolution log (TTD / TTR)
 tests/                        # unit tests
 ```
 
@@ -57,6 +62,20 @@ The process exits with code `0` when every table reaches staging and `1` when at
 ```bash
 poetry run python -m src.quality.dimensions_dama
 ```
+
+4. **Run the observability checks** (pillars, SLOs, alerts and incidents):
+
+```bash
+poetry run python -m src.quality.checks_runner
+```
+
+Or run the three steps at once:
+
+```bash
+poetry run python -m orchestration.local_pipeline
+```
+
+The orchestrator exits with code `1` when a table is blocked at ingestion or an SLO is breached. An optional webhook (e.g. Slack) receives the alerts when the `ALERT_WEBHOOK_URL` environment variable holds an `https://` URL.
 
 ## Stage 1 - Ingestion with Data Contracts
 
@@ -131,6 +150,30 @@ Since only tables that passed their contract reach staging, **Validity and Uniqu
 - **Completeness of optional columns** - reported per column (marked as *optional*) but left out of the table summary, because nulls there are expected.
 
 Each execution writes `dama_scorecard_<timestamp>.json` and `.md` to `reports/dq_scorecards/`. The Markdown starts with a summary table (the worst column or relation of each table per dimension) followed by the details per column. These percentages are natural SLIs for the SLO stage.
+
+## Stage 3 - Observability Pillars, SLOs and Incidents
+
+The contract and the scorecard look at **one execution**. The pillars compare the current execution with the **history** of snapshots written by the ingestion, catching what no fixed rule anticipated:
+
+| Pillar | Question | How |
+|---|---|---|
+| Freshness | Is the table up to date? | Hours since the last successful ingestion vs `max_delay_hours` |
+| Volume | Did the row count change abruptly? | Z-score of `n_rows` against recent executions |
+| Schema | Did columns or types change? | Columns and dtypes vs the previous execution |
+| Distribution | Did the values shift? | Z-score of each numeric mean and null rate |
+| Lineage | Who is affected? | Dependency graph built from the catalog `foreign_keys` |
+
+The statistical pillars default to a **moving baseline** (last 10 executions, outliers pruned with median/MAD) instead of a global Z-score: an old incident left in the history would otherwise inflate the standard deviation and hide new problems. Below 3 previous executions there is not enough evidence, and the pillar reports `insufficient_history` - never a failure.
+
+`config/slo.yaml` sets the targets (SLOs) per table and pillar; pairs without an SLO use the defaults in `src/quality/sli_slo.py`. Each (table, pillar) is evaluated **once**, so the SLO verdict, the alert and the incident always agree.
+
+For every anomaly the checks runner:
+
+1. sends an alert whose severity follows the table `criticality` in the catalog (`high` = critical, `medium` = warning, `low` = info);
+2. registers an incident with the downstream tables impacted via lineage and the TTD (Time to Detection) - measured from the ingestion that brought the anomalous data;
+3. skips anomalies already registered for the same snapshot, so re-running the checks on unchanged data opens no duplicate incidents.
+
+A table blocked by its contract keeps its last snapshot, so it grows stale until the freshness SLO fires - the block becomes visible to everyone downstream.
 
 ## Tests and Lint
 
