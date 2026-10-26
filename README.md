@@ -15,7 +15,7 @@ This project puts into practice the mechanisms proposed to reduce this risk: dat
 | 1. Ingestion with data contracts (raw -> staging) | Done |
 | 2. Quality dimensions scorecard (DAMA UK) on staging | Done |
 | 3. Observability pillars, SLOs, alerts and incidents | Done |
-| 4. Curated layer, field-level lineage, certification and root cause analysis | Planned |
+| 4. Curated layer, field-level lineage, certification, root cause analysis and maturity dashboard | Done |
 
 ## Project Structure
 
@@ -26,17 +26,24 @@ config/slo.yaml               # Service Level Objectives per table and pillar
 contracts/*.contract.yaml     # one data contract per table
 data/raw/                     # original Olist CSVs (not versioned)
 data/staging/                 # validated and typed Parquet files (not versioned)
+data/curated/                 # analytical tables with derived fields (not versioned)
 reports/ingestion_logs/       # JSON log per execution (not versioned)
 reports/dq_scorecards/        # contract reports and DAMA scorecards per execution (not versioned)
 reports/quality_history/      # metric snapshots per table, the baseline for observability (not versioned)
 reports/alerts/               # alerts.jsonl (not versioned)
-reports/incidents/            # incidents.jsonl and resolutions.jsonl (not versioned)
+reports/incidents/            # incidents, resolutions, RCAs and postmortems (not versioned)
+reports/certification/       # latest certification status per table (not versioned)
+reports/maturity_dashboard/  # maturity KPIs per execution (not versioned)
 orchestration/                # local end-to-end pipeline
 src/config.py                 # shared settings and catalog loaders
 src/ingestion/                # ingestion pipeline, contract validator and type casting
 src/quality/                  # DAMA scorecard, observability pillars, SLO evaluation and checks runner
 src/monitoring/               # metric history store, anomaly detection and alerting
-src/incidents/                # incident and resolution log (TTD / TTR)
+src/incidents/                # incident log (TTD / TTR), RCA, postmortem and the incident CLI
+src/transform/                # curated layer transformations
+src/lineage/                  # field-level lineage registry
+src/certification/            # table certification
+src/reporting/                # maturity dashboard
 tests/                        # unit tests
 ```
 
@@ -69,7 +76,7 @@ poetry run python -m src.quality.dimensions_dama
 poetry run python -m src.quality.checks_runner
 ```
 
-Or run the three steps at once:
+Or run the whole pipeline at once - ingestion, DAMA, checks, certification, curated layer and dashboard:
 
 ```bash
 poetry run python -m orchestration.local_pipeline
@@ -174,6 +181,48 @@ For every anomaly the checks runner:
 3. skips anomalies already registered for the same snapshot, so re-running the checks on unchanged data opens no duplicate incidents.
 
 A table blocked by its contract keeps its last snapshot, so it grows stale until the freshness SLO fires - the block becomes visible to everyone downstream.
+
+## Stage 4 - Curated Layer, Certification and Incident Response
+
+### Curated layer and field-level lineage
+
+`src/transform/build_curated.py` builds `data/curated/` from staging, and only when its source tables passed their contract in the same execution - curated is never rebuilt from stale data.
+
+| Table | Derived field | Transformation |
+|---|---|---|
+| `order_items_curated` | `item_total_value` | `price + freight_value` (one item, **not** the order) |
+| `orders_curated` | `order_total_value` | `SUM(item_total_value) GROUP BY order_id` (null for orders without items) |
+| `orders_curated` | `delivery_delay_days` | delivered - estimated, in days (positive = late) |
+
+Each derived field is declared in `src/lineage/field_lineage.py`, so any field can be traced back to its source columns, across several levels:
+
+```python
+>>> trace_to_source_fields("orders_curated", "order_total_value")
+[('order_items', 'price'), ('order_items', 'freight_value')]
+```
+
+A test fails if a curated column is created without its lineage entry, so the registry cannot drift from the code.
+
+### Certification
+
+A table is **certified** when it has an owner, enough history for every pillar to give a verdict, no pillar in anomaly and no open incident. The verdicts are the same ones used by the SLOs, and the status is written to `reports/certification/certification_status.yaml`.
+
+### Incident response
+
+Detection is automatic; investigation and resolution are human. The incident CLI closes the loop:
+
+```bash
+poetry run python -m src.incidents.cli list                       # open incidents
+poetry run python -m src.incidents.cli rca 662dd7b2 --why "..." --why "..." --root-cause "..." --by "name"
+poetry run python -m src.incidents.cli postmortem 662dd7b2 --impact "..." --timeline "..." --action "..."
+poetry run python -m src.incidents.cli resolve 662dd7b2 --summary "what fixed it"
+```
+
+Ids accept any unique prefix. The RCA follows the 5 Whys and the postmortem is **blameless** by design: it records who investigated, never who caused the problem. A resolved incident releases the table for certification again.
+
+### Maturity dashboard
+
+`reports/maturity_dashboard/` gathers the reliability KPIs of each execution: incidents (open, resolved, by severity), mean TTD, mean TTR, % of SLOs met and % of certified tables.
 
 ## Tests and Lint
 

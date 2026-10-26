@@ -26,7 +26,7 @@ from src.monitoring.alerting import Severity, send_alert
 from src.monitoring.history_store import load_history
 from src.quality.pillars.base import PillarFinding
 from src.quality.pillars.lineage import Graph, build_lineage_graph, downstream_impact
-from src.quality.sli_slo import PILLARS, SLOResult, evaluate_pillar, evaluate_slos, load_slos, pillar_params
+from src.quality.sli_slo import SLOResult, evaluate_slos, evaluate_table, load_slos
 
 SEVERITY_BY_CRITICALITY: dict[str, Severity] = {"high": "critical", "medium": "warning", "low": "info"}
 
@@ -81,6 +81,28 @@ def handle_anomaly(
     known_incidents.append(incident.as_dict())
 
 
+def evaluate_catalog(
+    catalog: dict[str, Any],
+    slos: list[dict[str, Any]],
+    history_dir: Path,
+    contracts_dir: Path,
+) -> dict[str, dict[str, PillarFinding]]:
+    """
+    Evaluates every pillar of every cataloged table WITHOUT side effects (no alert, no incident,
+    no report). Used by certification and by the maturity dashboard, so they read exactly the
+    same verdicts as the checks runner. Tables without history get an empty dict.
+    """
+    findings_by_table: dict[str, dict[str, PillarFinding]] = {}
+    for table_name in catalog["tables"]:
+        history = load_history(table_name, history_dir)
+        if not history:
+            findings_by_table[table_name] = {}
+            continue
+        contract = load_contract(table_name, contracts_dir)
+        findings_by_table[table_name], _ = evaluate_table(table_name, history, contract, slos)
+    return findings_by_table
+
+
 def run() -> tuple[dict[str, dict[str, PillarFinding]], list[SLOResult]]:
     """Executes all observability pillar checks, evaluates SLOs, dispatches alerts,
     logs incidents, and generates a Markdown summary report.
@@ -107,10 +129,7 @@ def run() -> tuple[dict[str, dict[str, PillarFinding]], list[SLOResult]]:
             continue
 
         contract = load_contract(table_name, contracts_dir)
-        params_by_pillar = {p: pillar_params(table_name, p, slos) for p in PILLARS}
-        findings = {
-            p: evaluate_pillar(table_name, p, history, contract, params_by_pillar[p]) for p in PILLARS
-        }
+        findings, params_by_pillar = evaluate_table(table_name, history, contract, slos)
         findings_by_table[table_name] = findings
         print(f"[checks_runner] '{table_name}': " + ", ".join(f"{p}={f.status}" for p, f in findings.items()))
 
