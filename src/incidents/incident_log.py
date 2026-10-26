@@ -186,8 +186,15 @@ def register_resolution(
 
     Returns:
         The generated Resolution instance.
+
+    Raises:
+        ValueError: if the incident does not exist or was already resolved (a second
+            resolution would distort the mean TTR and the % of resolved incidents).
     """
     resolved_at = resolved_at or datetime.now(UTC)
+
+    if any(r["incident_id"] == incident_id for r in load_resolutions(incidents_dir)):
+        raise ValueError(f"Incident '{incident_id}' is already resolved.")
 
     if detected_at is None:
         incidents = load_incidents(incidents_dir)
@@ -224,3 +231,8 @@ def load_resolutions(incidents_dir: Path) -> list[dict[str, Any]]:
         return []
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+def open_incidents(incidents: list[dict[str, Any]], resolutions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Incidents without a registered resolution, in registration order."""
+    resolved_ids = {r["incident_id"] for r in resolutions}
+    return [inc for inc in incidents if inc["incident_id"] not in resolved_ids]

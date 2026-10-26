@@ -9,6 +9,8 @@ from src.incidents.incident_log import (
     compute_ttr_seconds,
     find_incident,
     load_incidents,
+    load_resolutions,
+    open_incidents,
     register_incident,
     register_resolution,
 )
@@ -67,3 +69,21 @@ def test_find_incident_matches_table_pillar_and_snapshot(tmp_path):
     assert find_incident(incidents, "orders", "volume", "snap-2") is None        # new data
     assert find_incident(incidents, "orders", "schema", "snap-1") is None        # other pillar
     assert find_incident(incidents, "orders", "volume", None) is None            # no snapshot: never dedupe
+
+
+def test_resolving_twice_is_rejected(tmp_path):
+    incident = register_incident("orders", "volume", "drop", [], tmp_path)
+    register_resolution(incident.incident_id, "fixed", tmp_path)
+
+    with pytest.raises(ValueError, match="already resolved"):
+        register_resolution(incident.incident_id, "fixed again", tmp_path)
+
+
+def test_open_incidents_excludes_resolved_ones(tmp_path):
+    first = register_incident("orders", "volume", "drop", [], tmp_path)
+    second = register_incident("orders", "schema", "new column", [], tmp_path)
+    register_resolution(first.incident_id, "fixed", tmp_path)
+
+    still_open = open_incidents(load_incidents(tmp_path), load_resolutions(tmp_path))
+
+    assert [inc["incident_id"] for inc in still_open] == [second.incident_id]
