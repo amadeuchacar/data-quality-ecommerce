@@ -4,12 +4,15 @@ environment: local
 local:
   raw_path: "data/raw"
   staging_path: "data/staging"
+  curated_path: "data/curated"
   ingestion_logs_path: "reports/ingestion_logs"
   contracts_path: "contracts"
   dq_reports_path: "reports/dq_scorecards"
   quality_history_path: "reports/quality_history"
   alerts_path: "reports/alerts"
   incidents_path: "reports/incidents"
+  certification_path: "reports/certification"
+  dashboard_path: "reports/maturity_dashboard"
 
 catalog_path: "catalog/inventory.yaml"
 slo_path: "config/slo.yaml"
