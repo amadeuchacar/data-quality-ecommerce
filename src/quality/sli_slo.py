@@ -141,6 +141,23 @@ def evaluate_pillar(
     raise ValueError(f"Unknown pillar: {pillar}")
 
 
+def evaluate_table(
+    table: str,
+    history: list[dict[str, Any]],
+    contract: dict[str, Any] | None,
+    slos: list[dict[str, Any]],
+) -> tuple[dict[str, PillarFinding], dict[str, dict[str, Any]]]:
+    """Runs every pillar for one table, each with its resolved parameters.
+
+    Returns:
+        (findings by pillar, parameters by pillar) - the parameters are returned because the
+        incident handling needs them (e.g. max_delay_hours to date a freshness incident).
+    """
+    params_by_pillar = {p: pillar_params(table, p, slos) for p in PILLARS}
+    findings = {p: evaluate_pillar(table, p, history, contract, params_by_pillar[p]) for p in PILLARS}
+    return findings, params_by_pillar
+
+
 def evaluate_slos(
     slos: list[dict[str, Any]],
     findings_by_table: dict[str, dict[str, PillarFinding]],
