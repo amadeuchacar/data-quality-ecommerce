@@ -1,8 +1,8 @@
 """
 Stage 4 — Field-Level Lineage
 
-Since this project uses pandas instead of SQL, there is no query to parse (the approach
-described in Chapter 7 as most common). Instead, each field transformation is EXPLICITLY
+Since this project uses pandas instead of SQL, there is no query to parse. 
+Instead, each field transformation is EXPLICITLY
 DECLARED in this registry:
 
     Source Table -> Source Fields -> Transformation -> Target Field -> Target Table
@@ -78,10 +78,10 @@ def derived_fields(target_table: str) -> set[str]:
 def trace_to_source_fields(
     target_table: str, target_field: str, _depth: int = 0, _max_depth: int = 10
 ) -> list[tuple[str, str]]:
-    """Recursively resolves field dependencies back to base source fields (Chapter 7:
+    """Recursively resolves field dependencies back to base source fields
 
-    "lineage should not merely identify the direct relationship... but reconstruct
-    the entire dependency chain"). Duplicates are removed, keeping first-seen order.
+    "Lineage should not merely identify the direct relationship... but reconstruct
+    the entire dependency chain". Duplicates are removed, keeping first-seen order.
     """
     if _depth > _max_depth:
         raise RecursionError(f"Maximum lineage depth exceeded for {target_table}.{target_field}")

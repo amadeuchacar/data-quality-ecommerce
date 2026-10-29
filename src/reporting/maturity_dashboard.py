@@ -116,7 +116,7 @@ def render_dashboard_markdown(dashboard: dict[str, Any]) -> str:
         "",
         f"Generated at: {dashboard['generated_at']}",
         "",
-        "## Reliability KPIs (Chapter 10)",
+        "## Reliability KPIs",
         "",
         "| KPI | Value |",
         "|---|---|",
