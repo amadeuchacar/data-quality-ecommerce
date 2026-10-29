@@ -21,7 +21,7 @@ slos:
     pillar: volume
     description: >
       The volume of 'orders' must not deviate by more than 3 standard deviations from history —
-      an abrupt drop or spike typically indicates an upstream failure (Chapter 4).
+      an abrupt drop or spike typically indicates an upstream failure.
     z_threshold: 3.0
     method: moving   # zscore | moving | ewma  (baseline: full history vs sliding window)
     window: 10       # number of recent executions used as baseline

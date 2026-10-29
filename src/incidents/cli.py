@@ -51,7 +51,7 @@ def _cmd_list(args: argparse.Namespace, incidents_dir: Path) -> None:
         return
     for inc in shown:
         print(
-            f"{inc['incident_id'][:8]}  {inc.get('severity', '-'):<8}  {inc['table']}/{inc['pillar']:<12}  "
+            f"{inc['incident_id'][:8]}  {inc.get('severity', '-'):<8}  {inc['table'] + '/' + inc['pillar']:<28}  "
             f"detected {inc['detected_at'][:19]}  {inc['detail']}"
         )
 
