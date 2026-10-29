@@ -17,6 +17,13 @@ This project puts into practice the mechanisms proposed to reduce this risk: dat
 | 3. Observability pillars, SLOs, alerts and incidents | Done |
 | 4. Curated layer, field-level lineage, certification, root cause analysis and maturity dashboard | Done |
 
+## Documentation
+
+The full study material - theory from the book applied to the code, architecture decisions, a reference of every module, configuration, and how to run, test and simulate incidents - lives in [`docs/`](docs/README.md), in **English** and **Portuguese**:
+
+- [English documentation](docs/en/README.md)
+- [Documentação em português](docs/pt-BR/README.md)
+
 ## Project Structure
 
 ```
@@ -35,6 +42,8 @@ reports/incidents/            # incidents, resolutions, RCAs and postmortems (no
 reports/certification/       # latest certification status per table (not versioned)
 reports/maturity_dashboard/  # maturity KPIs per execution (not versioned)
 orchestration/                # local end-to-end pipeline
+scripts/simulate_incident.py  # incident simulator for study
+docs/                         # full documentation (en / pt-BR)
 src/config.py                 # shared settings and catalog loaders
 src/ingestion/                # ingestion pipeline, contract validator and type casting
 src/quality/                  # DAMA scorecard, observability pillars, SLO evaluation and checks runner
@@ -223,6 +232,19 @@ Ids accept any unique prefix. The RCA follows the 5 Whys and the postmortem is *
 ### Maturity dashboard
 
 `reports/maturity_dashboard/` gathers the reliability KPIs of each execution: incidents (open, resolved, by severity), mean TTD, mean TTR, % of SLOs met and % of certified tables.
+
+## Simulating Incidents
+
+`scripts/simulate_incident.py` breaks one raw CSV at a time to exercise each defense (contract, volume, distribution, null rate, schema), backing up `data/raw/` first:
+
+```bash
+poetry run python -m scripts.simulate_incident list
+poetry run python -m scripts.simulate_incident volume_drop
+poetry run python -m orchestration.local_pipeline
+poetry run python -m scripts.simulate_incident restore
+```
+
+Run the pipeline a few times before simulating: the statistical pillars need at least 3 previous executions. The expected result of each scenario is described in [docs/en/06-running-and-testing.md](docs/en/06-running-and-testing.md#65-simulating-incidents).
 
 ## Tests and Lint
 
