@@ -19,6 +19,7 @@ __pycache__/
 data/raw/
 data/staging/
 data/curated/
+data/raw_backup/
 
 # Generated reports (keep only the folder placeholders)
 reports/**/*
