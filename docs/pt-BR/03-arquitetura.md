@@ -113,7 +113,7 @@ O projeto passou por várias refatorações para eliminar duplicações que já 
 ### D8. Linha de base móvel e robusta
 
 - **Decisão:** os pilares estatísticos usam por padrão `method: moving` (últimas 10 execuções), com poda de outliers por mediana/MAD e piso de desvio-padrão de 1% da média.
-- **Por quê:** cada componente resolve um problema concreto, reproduzido nos testes (ver [2.6](02-fundamentos-teoricos.md#26-detecção-de-anomalias-capítulo-4)). No simulador, depois do `volume_drop` e da restauração, a execução seguinte **não** abriu falso alarme: a poda descartou o ponto anômalo da linha de base.
+- **Por quê:** cada componente resolve um problema concreto, reproduzido nos testes (ver [2.6](02-fundamentos-teoricos.md#26-detecção-de-anomalias)). No simulador, depois do `volume_drop` e da restauração, a execução seguinte **não** abriu falso alarme: a poda descartou o ponto anômalo da linha de base.
 
 ### D9. "Sem evidência" nunca falha um SLO, mas nunca certifica
 
@@ -140,7 +140,7 @@ O projeto passou por várias refatorações para eliminar duplicações que já 
 
 - **Contexto:** com SQL, o lineage pode ser extraído analisando as queries. Com pandas, não há o que analisar.
 - **Decisão:** um registro explícito em `field_lineage.py`, mais um teste que compara as colunas criadas pelo código com as declaradas no registro.
-- **Por quê:** um registro manual tende a ficar desatualizado. O teste transforma esse risco em falha de CI.
+- **Por quê:** um registro manual tende a ficar desatualizado. O teste transforma esse desvio silencioso em uma falha visível na próxima execução do `pytest`.
 
 ### D14. Estado gerado fora das pastas versionadas
 

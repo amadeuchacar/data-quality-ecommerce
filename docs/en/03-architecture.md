@@ -113,7 +113,7 @@ The project went through several refactorings to remove duplications that had al
 ### D8. Moving, robust baseline
 
 - **Decision:** the statistical pillars default to `method: moving` (last 10 runs), with median/MAD outlier pruning and a standard deviation floor of 1% of the mean.
-- **Why:** each component solves a concrete problem, reproduced in the tests (see [2.6](02-theoretical-foundations.md#26-anomaly-detection-chapter-4)). In the simulator, after `volume_drop` and the restore, the next run raised **no** false alarm: the pruning discarded the anomalous point from the baseline.
+- **Why:** each component solves a concrete problem, reproduced in the tests (see [2.6](02-theoretical-foundations.md#26-anomaly-detection)). In the simulator, after `volume_drop` and the restore, the next run raised **no** false alarm: the pruning discarded the anomalous point from the baseline.
 
 ### D9. "No evidence" never fails an SLO, but never certifies
 
@@ -140,7 +140,7 @@ The project went through several refactorings to remove duplications that had al
 
 - **Context:** with SQL, lineage can be extracted by parsing the queries. With pandas, there is nothing to parse.
 - **Decision:** an explicit registry in `field_lineage.py`, plus a test that compares the columns created by the code with those declared in the registry.
-- **Why:** a manual registry tends to fall out of date. The test turns that risk into a CI failure.
+- **Why:** a manual registry tends to fall out of date. The test turns that silent drift into a visible failure on the next `pytest` run.
 
 ### D14. Generated state outside versioned folders
 
