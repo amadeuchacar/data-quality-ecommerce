@@ -60,7 +60,7 @@ tables:
     known_gotchas: >
       price and freight_value are the fields used to calculate revenue - natural
       candidates for distribution monitoring and field lineage when calculating
-      total_order_value.
+      item_total_value and order_total_value (curated layer).
 
   order_payments:
     file: olist_order_payments_dataset.csv
