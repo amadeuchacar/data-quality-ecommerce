@@ -174,7 +174,7 @@ Um teste garante que cada SLO só use parâmetros que o seu pilar entende. Os pa
 |---|---|
 | `ALERT_WEBHOOK_URL` | Se definida com uma URL `https://`, cada alerta também é enviado como `{"text": "..."}` (formato de webhook do Slack). Outros esquemas são ignorados com um aviso |
 
-O `.env` está no `.gitignore`. Ele também guarda o `KAGGLE_API_TOKEN` usado no download dos dados.
+A variável é lida do ambiente do processo: nada no projeto (nem o Poetry) carrega um arquivo `.env`, então defina-a na sessão do terminal, como em [6.7](06-execucao-e-testes.md#67-testando-o-webhook). O mesmo vale para o token do Kaggle usado no download dos dados (ver `scripts/download_instructions.md`).
 
 ## 5.6 Receitas
 
