@@ -2,7 +2,7 @@
 
 > [Índice](README.md) · Anterior: [1. Visão geral](01-visao-geral.md) · Próximo: [3. Arquitetura](03-arquitetura.md)
 
-Este capítulo apresenta os conceitos do livro **Data Quality Fundamentals** usados no projeto e mostra, para cada um, onde ele vive no código. As referências a capítulos seguem as que já aparecem nos comentários do código (edição em inglês); confira a numeração na sua edição.
+Este capítulo apresenta os conceitos do livro **Data Quality Fundamentals** usados no projeto e mostra, para cada um, onde ele vive no código.
 
 As dimensões DAMA (seção 2.4) não vêm do livro: são um complemento do DAMA UK, incluído porque dá uma medida gradual que o livro não formaliza.
 
@@ -95,7 +95,7 @@ A diferença em relação aos testes da seção 2.2: os pilares não precisam qu
 | Distribution | Z-score da média de cada coluna numérica e da taxa de nulos de cada coluna |
 | Lineage | Grafo de dependência construído a partir das `foreign_keys` do catálogo |
 
-## 2.6 Detecção de anomalias (capítulo 4)
+## 2.6 Detecção de anomalias
 
 **Conceito.** Limites fixos ("alerte se vier menos de 90 mil linhas") são frágeis: ou são frouxos e não pegam nada, ou são apertados e geram alarme falso. O livro defende limites **aprendidos com o histórico**. O mais simples é o Z-score:
 
@@ -126,7 +126,7 @@ Também está disponível o EWMA (média móvel exponencial), que dá mais peso 
 
 **No projeto.** Em `config/slo.yaml`, cada SLO aponta uma tabela, um pilar, uma descrição (o SLA) e os parâmetros (o SLO). O pilar é o SLI. Uma decisão central (ver [3.3](03-arquitetura.md#33-decisões-de-arquitetura)) é que cada par (tabela, pilar) é avaliado **uma única vez**, com os parâmetros do SLO; o alerta, o incidente, o SLO e a certificação leem o mesmo veredito.
 
-## 2.8 Gestão de incidentes (capítulos 5 e 6)
+## 2.8 Gestão de incidentes
 
 **Conceito.** Detectar é metade do trabalho. O livro descreve um processo de resposta com estes elementos:
 
@@ -148,7 +148,7 @@ Também está disponível o EWMA (média móvel exponencial), que dá mais peso 
 | Postmortem | Markdown *blameless* por desenho: tem campo de "quem investigou", nunca de "quem causou" |
 | Resolução | CLI registra a resolução e calcula o TTR |
 
-## 2.9 Lineage (capítulo 7)
+## 2.9 Lineage
 
 **Conceito.** Lineage responde duas perguntas de incidente:
 
@@ -175,7 +175,7 @@ O livro distingue o lineage **de tabela** do lineage **de campo** e defende reco
 
 O critério 2 aplica o princípio "falta de evidência não é evidência". O critério 4 conecta o processo de incidentes à certificação: a tabela só volta a ser certificada depois que alguém registra a resolução.
 
-## 2.11 Maturidade (capítulo 10)
+## 2.11 Maturidade
 
 **Conceito.** Confiabilidade de dados é uma prática que amadurece com o tempo: de reativa (descobrir problemas pelos consumidores) a proativa e automatizada. Para saber se a prática está melhorando, é preciso medir.
 

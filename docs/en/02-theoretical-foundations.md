@@ -2,7 +2,7 @@
 
 > [Index](README.md) · Previous: [1. Overview](01-overview.md) · Next: [3. Architecture](03-architecture.md)
 
-This chapter presents the concepts from **Data Quality Fundamentals** used in the project and shows, for each one, where it lives in the code. Chapter references follow the ones already present in the code comments (English edition); check the numbering in your own edition.
+This chapter presents the concepts from **Data Quality Fundamentals** used in the project and shows, for each one, where it lives in the code.
 
 The DAMA dimensions (section 2.4) do not come from the book: they are a complement from DAMA UK, included because they provide a gradual measure that the book does not formalize.
 
@@ -95,7 +95,7 @@ The difference from the tests in section 2.2: pillars do not need anyone to fore
 | Distribution | Z-score of the mean of each numeric column and of the null rate of each column |
 | Lineage | Dependency graph built from the catalog `foreign_keys` |
 
-## 2.6 Anomaly detection (chapter 4)
+## 2.6 Anomaly detection
 
 **Concept.** Fixed thresholds ("alert if fewer than 90 thousand rows arrive") are fragile: either they are loose and catch nothing, or tight and raise false alarms. The book advocates thresholds **learned from history**. The simplest is the Z-score:
 
@@ -126,7 +126,7 @@ EWMA (exponentially weighted moving average), which gives more weight to recent 
 
 **In the project.** In `config/slo.yaml`, each SLO names a table, a pillar, a description (the SLA) and the parameters (the SLO). The pillar is the SLI. A central decision (see [3.3](03-architecture.md#33-architecture-decisions)) is that each (table, pillar) pair is evaluated **only once**, with the SLO parameters; the alert, the incident, the SLO and the certification all read the same verdict.
 
-## 2.8 Incident management (chapters 5 and 6)
+## 2.8 Incident management
 
 **Concept.** Detecting is half the job. The book describes a response process with these elements:
 
@@ -148,7 +148,7 @@ EWMA (exponentially weighted moving average), which gives more weight to recent 
 | Postmortem | Markdown that is blameless by design: it has a field for "who investigated", never for "who caused it" |
 | Resolution | The CLI records the resolution and computes TTR |
 
-## 2.9 Lineage (chapter 7)
+## 2.9 Lineage
 
 **Concept.** Lineage answers two incident questions:
 
@@ -175,7 +175,7 @@ The book distinguishes **table-level** from **field-level** lineage and argues f
 
 Criterion 2 applies the principle "absence of evidence is not evidence". Criterion 4 connects the incident process to certification: the table is certified again only after someone records the resolution.
 
-## 2.11 Maturity (chapter 10)
+## 2.11 Maturity
 
 **Concept.** Data reliability is a practice that matures over time: from reactive (finding problems through consumers) to proactive and automated. To know whether the practice is improving, you have to measure it.
 
