@@ -3,16 +3,39 @@
 ## Option A — Kaggle API
 
 1. Create a [Kaggle](https://www.kaggle.com) account if you don't have one yet.
-2. Generate an API token: Account -> Settings -> API Tokens -> "Generate New Token".
-3. Add the token to your `.env` environment variable as the value for the `KAGGLE_API_TOKEN` key (KAGGLE_API_TOKEN = "YOUR_KEY").
-4. Install the package (development dependency) and download the dataset:
+2. Install the dependencies (the Kaggle CLI is a development dependency):
 
-```bash
-poetry install
-poetry run kaggle datasets download -d olistbr/brazilian-ecommerce -p data/raw --unzip
-```
+   ```bash
+   poetry install
+   ```
 
-To **restore** the original CSVs after an incident test, repeat the second command appending `-o` to overwrite existing files.
+3. Authenticate the Kaggle CLI with **one** of the options below. A `.env` file is **not** loaded: neither the project, Poetry nor the Kaggle CLI reads it.
+
+   **Browser login** (recommended by Kaggle, no token to manage):
+
+   ```bash
+   poetry run kaggle auth login
+   ```
+
+   **API token in an environment variable** (valid only for the current terminal session). Generate the token at [kaggle.com/settings/api](https://www.kaggle.com/settings/api) ("Generate New Token"), then:
+
+   ```powershell
+   $env:KAGGLE_API_TOKEN = "YOUR_TOKEN"   # PowerShell
+   ```
+
+   ```bash
+   export KAGGLE_API_TOKEN="YOUR_TOKEN"   # bash / Git Bash
+   ```
+
+   **API token in a file** (persistent): save the token as the only content of `~/.kaggle/access_token` (on Windows, `C:\Users\<you>\.kaggle\access_token`).
+
+4. Download the dataset:
+
+   ```bash
+   poetry run kaggle datasets download -d olistbr/brazilian-ecommerce -p data/raw --unzip
+   ```
+
+To **restore** the original CSVs after an incident test, repeat the download command appending `-o` to overwrite existing files.
 
 ## Option B — Manual download
 

@@ -17,7 +17,7 @@ The project uses `package-mode = false`: Poetry installs the dependencies but do
 **Downloading the data** (details in `scripts/download_instructions.md`):
 
 ```bash
-# with KAGGLE_API_TOKEN in .env
+# authenticate first: poetry run kaggle auth login (or a KAGGLE_API_TOKEN; .env is not read)
 poetry run kaggle datasets download -d olistbr/brazilian-ecommerce -p data/raw --unzip
 ```
 
