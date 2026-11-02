@@ -1,9 +1,8 @@
 """
 Stage 4 — Field-Level Lineage
 
-Since this project uses pandas instead of SQL, there is no query to parse. 
-Instead, each field transformation is EXPLICITLY
-DECLARED in this registry:
+Since this project uses pandas instead of SQL, there is no query to parse. Instead, each
+field transformation is EXPLICITLY DECLARED in this registry:
 
     Source Table -> Source Fields -> Transformation -> Target Field -> Target Table
 
