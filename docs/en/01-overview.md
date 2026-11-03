@@ -38,7 +38,10 @@ flowchart LR
     HIST --> CHK[3. Pillars + SLOs]
     CHK -->|anomaly| ALERT[Alert + incident]
     CHK --> CERT[4. Certification]
-    STG -->|sources OK in this run| CUR[(data/curated)]
+    STG --> GATE{Curated gate<br/>sources passed the contract<br/>and have no anomaly?}
+    CHK --> GATE
+    GATE -->|yes| CUR[(data/curated)]
+    GATE -->|no| KEEP[Curated keeps its<br/>last good version]
     CERT --> DASH[Maturity dashboard]
     ALERT --> CLI[Incident CLI<br/>RCA, postmortem, resolution]
     CLI --> CERT
@@ -49,6 +52,7 @@ How to read the diagram:
 1. Every table goes through the contract before reaching staging. A table that violates its contract is blocked **on its own**; the others continue.
 2. Every approved ingestion writes a metrics **snapshot**. This history is the memory the observability pillars use to detect deviations.
 3. An anomaly raises an alert and an incident. A person investigates and resolves it through the CLI; only then is the table certified again.
+4. The curated layer is rebuilt only when its source tables passed the contract **and** the pillars found no anomaly in them in the same run. Otherwise it keeps its last good version, so a problem that was just detected does not reach the layer consumers trust.
 
 ## 1.4 Principles behind the code
 
@@ -82,7 +86,7 @@ src/transform/                 curated layer
 src/lineage/                   field-level lineage registry
 src/certification/             table certification
 src/reporting/                 maturity dashboard
-tests/                         172 unit tests
+tests/                         179 unit tests
 ```
 
 ## 1.6 How to read this documentation

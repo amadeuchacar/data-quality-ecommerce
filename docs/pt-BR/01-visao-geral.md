@@ -38,7 +38,10 @@ flowchart LR
     HIST --> CHK[3. Pilares + SLOs]
     CHK -->|anomalia| ALERT[Alerta + incidente]
     CHK --> CERT[4. Certificação]
-    STG -->|fontes OK nesta execução| CUR[(data/curated)]
+    STG --> GATE{Portão do curated<br/>as fontes passaram no contrato<br/>e estão sem anomalia?}
+    CHK --> GATE
+    GATE -->|sim| CUR[(data/curated)]
+    GATE -->|não| KEEP[Curated mantém<br/>a última versão boa]
     CERT --> DASH[Dashboard de maturidade]
     ALERT --> CLI[CLI de incidentes<br/>RCA, postmortem, resolução]
     CLI --> CERT
@@ -49,6 +52,7 @@ Leitura do diagrama:
 1. Toda tabela passa pelo contrato antes de chegar ao staging. Uma tabela que viola o contrato é barrada **sozinha**; as outras seguem.
 2. Toda ingestão aprovada grava um **snapshot** de métricas. Esse histórico é a memória que os pilares de observabilidade usam para detectar desvios.
 3. Uma anomalia gera alerta e incidente. Uma pessoa investiga e resolve pela CLI; só então a tabela volta a ser certificada.
+4. A camada curada só é reconstruída quando as tabelas de origem passaram no contrato **e** os pilares não encontraram anomalia nelas na mesma execução. Caso contrário, ela mantém a última versão boa, e um problema recém-detectado não chega à camada em que os consumidores confiam.
 
 ## 1.4 Princípios que guiam o código
 
@@ -82,7 +86,7 @@ src/transform/                 camada curada
 src/lineage/                   registro de lineage de campo
 src/certification/             certificação de tabelas
 src/reporting/                 dashboard de maturidade
-tests/                         172 testes unitários
+tests/                         179 testes unitários
 ```
 
 ## 1.6 Como ler esta documentação

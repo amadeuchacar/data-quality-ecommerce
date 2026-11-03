@@ -375,7 +375,8 @@ Every pillar returns a `PillarFinding` (`base.py`): `table`, `pillar`, `status` 
 
 | Element | Detail |
 |---|---|
-| `CURATED_SOURCES` | `{"order_items", "orders"}`: tables the layer depends on (used by the orchestrator) |
+| `CURATED_SOURCES` | `{"order_items", "orders"}`: tables the layer depends on (used by the gate) |
+| `curated_blockers(ingested, findings_by_table)` | Pure. `{source: reason}` for every source that did not pass its contract in this run or has a pillar in `anomaly`; empty = safe to rebuild. `insufficient_history` does not block |
 | `curate_order_items(order_items)` | Pure. Adds `item_total_value = price + freight_value` |
 | `curate_orders(orders, order_items_curated)` | Pure. Adds `delivery_delay_days` (`Int64`) and `order_total_value` (sum per order) |
 | `run()` | Reads staging, writes `data/curated/*.parquet` and returns the row counts |
@@ -385,6 +386,7 @@ Every pillar returns a `PillarFinding` (`base.py`): `table`, `pillar`, `status` 
 - **`item_total_value`, not `total_order_value`:** the value belongs to **one item**, and 9,803 orders have more than one item. The previous name led consumers to sum it wrongly: the same semantic trap the catalog documents for `customer_id`.
 - **`order_total_value` is null for orders without items:** "no items" (an order canceled before invoicing) is not the same as "zero value".
 - **`merge(..., validate="one_to_one")`:** if the per-order aggregation produced duplicates by mistake, pandas raises an exception instead of silently multiplying rows.
+- **The gate lives next to `CURATED_SOURCES`:** the module that knows which tables curated depends on is also the one that decides whether they are fit to be used. The orchestrator only calls it (D12).
 - **Positive `delivery_delay_days` = late.** The rounding of `.dt.days` was checked: since the estimated date is always midnight, the result matches the calendar-day difference for all 96,476 deliveries.
 
 ---
@@ -452,7 +454,9 @@ Example, with two levels of recursion:
 
 ## 4.19 `orchestration/local_pipeline.py`
 
-Six steps: ingestion → DAMA → pillars → certification → curated layer (gated) → dashboard. Then it prints the summary (blocked tables, breached SLOs, certified tables) and returns the exit code (D16). The findings from step 3 are passed to steps 4 and 6.
+Six steps: ingestion → DAMA → pillars → certification → curated layer (gated) → dashboard. Then it prints the summary (blocked tables, breached SLOs, curated layer rebuilt or skipped, certified tables) and returns the exit code (D16). The findings from step 3 are passed to steps 4, 5 and 6.
+
+The curated step calls `curated_blockers()` with the tables that passed their contract and the findings of step 3. If it returns anything, the step prints `[curated] SKIPPED` with the reason per source and curated keeps its last good version (D12).
 
 ---
 
@@ -463,8 +467,8 @@ Each scenario changes **one** raw CSV to exercise a specific mechanism. The firs
 | Scenario | Table | Change | Mechanism exercised |
 |---|---|---|---|
 | `contract_violation` | order_items | 10 prices = −1 | Contract + circuit breaker |
-| `volume_drop` | orders | Removes the last 8% of rows | Volume pillar (passes the contract: 91,485 ≥ 90,000) |
-| `distribution_shift` | order_items | `freight_value × 3` | Distribution pillar (freight has no maximum in the contract) |
+| `volume_drop` | orders | Removes the last 8% of rows | Volume pillar (passes the contract: 91,485 ≥ 90,000) + curated gate |
+| `distribution_shift` | order_items | `freight_value × 3` | Distribution pillar (freight has no maximum in the contract) + curated gate |
 | `null_spike` | products | 30% of categories become null | Null rate (`nullable: true` column) |
 | `schema_drift` | order_reviews | New column `review_channel` | The contract only warns; the schema pillar fires |
 
@@ -486,7 +490,7 @@ The real outputs of each scenario are in [6.5](06-running-and-testing.md#65-simu
 | `test_slo.py` | Parameter resolution, SLO reading the finding, consistency of `slo.yaml` |
 | `test_incidents.py` | TTD, TTR, deduplication, double resolution, open incidents |
 | `test_checks_runner.py` | Severity, impact, deduplication and `occurrence_time` |
-| `test_curated.py` | Transformations and the field-level lineage guard test |
+| `test_curated.py` | Transformations, the field-level lineage guard test and the curated gate (what blocks and what does not) |
 | `test_certification.py` | The five certification criteria |
 | `test_rca.py` | RCA, postmortem and the CLI |
 | `test_maturity_dashboard.py` | KPIs and rendering |

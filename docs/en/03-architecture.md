@@ -8,7 +8,7 @@
 |---|---|---|---|
 | **Raw** | `data/raw/` | CSV, as downloaded from Kaggle | None: it is the source |
 | **Staging** | `data/staging/` | Parquet, one per table | Met its contract and is typed accordingly |
-| **Curated** | `data/curated/` | Parquet | Built only from staging approved **in the same run**, with derived fields documented by lineage |
+| **Curated** | `data/curated/` | Parquet | Built only from sources that passed their contract **and** had no pillar anomaly **in the same run**, with derived fields documented by lineage |
 
 **Why three layers.** Each layer carries a different trust contract. Whoever reads staging knows types and rules were checked. Whoever reads curated also knows where each derived field comes from. Raw stays untouched, which allows reprocessing everything and returning to the original after a simulation.
 
@@ -78,7 +78,7 @@ Each decision follows the format: context → decision → why → accepted cost
 
 - **Decision:** a violation blocks only the table that violated; the loop continues.
 - **Why:** stopping everything because of a low-criticality table (`category_translation`) would cause more downtime than the problem itself.
-- **Cost:** staging may hold tables from different runs. Mitigation: the curated layer is rebuilt only when its sources passed **in this** run (D12), and the freshness pillar exposes the table left behind.
+- **Cost:** staging may hold tables from different runs. Mitigation: the curated layer is rebuilt only when its sources passed **in this** run, with no anomaly (D12), and the freshness pillar exposes the table left behind.
 
 ### D4. Snapshots only for approved data
 
@@ -95,14 +95,14 @@ The project went through several refactorings to remove duplications that had al
 | "Is this value valid?" | `column_rule_violations()` | Contract (counts) and DAMA (percentage) |
 | Type conversion | `TYPE_CASTERS` | Contract (detects) and ingestion (writes typed data) |
 | Parameters of a pillar | `pillar_params()` | Runner, SLOs, certification, dashboard |
-| Evaluation of a table | `evaluate_table()` / `evaluate_catalog()` | Runner, certification, dashboard |
+| Evaluation of a table | `evaluate_table()` / `evaluate_catalog()` | Runner, certification, curated gate, dashboard |
 
 - **Why:** before the unification, the runner evaluated freshness with 24h for every table, while the SLO for `products` said 48h. After 30h without a load, an incident was opened while the SLO said "ok". With a single place, the alert, the incident, the SLO, the certification and the dashboard read **the same verdict**.
 
 ### D6. Pure functions with a thin I/O shell
 
 - **Decision:** logic lives in functions that receive and return data (`score_table`, `curate_orders`, `certify_all`, `compute_kpis`, `evaluate_slos`). Reading and writing live in `run()` functions.
-- **Why:** testability. The 172 tests run in under 1 second and none of them reads `data/raw/`. The DAMA `consistency()` receives the parent-table lookup as a parameter (dependency injection), so the test passes an in-memory dictionary.
+- **Why:** testability. The 179 tests run in under 1 second and none of them reads `data/raw/`. The DAMA `consistency()` receives the parent-table lookup as a parameter (dependency injection), so the test passes an in-memory dictionary.
 
 ### D7. History in JSON Lines, append-only
 
@@ -131,10 +131,14 @@ The project went through several refactorings to remove duplications that had al
 - **Alternative considered:** use the worst criticality among all impacted tables.
 - **Why it was discarded:** with foreign keys as lineage, almost every table reaches `orders` (criticality `high`), and every alert would become critical. Severity comes from the source table, and the incident **lists** the impacted tables for triage.
 
-### D12. Curated layer gated on the same run's ingestion
+### D12. Curated layer gated on the same run's contract and pillars
 
-- **Decision:** the orchestrator calls `build_curated` only if `orders` and `order_items` passed their contract in that run.
-- **Why:** if `order_items` was blocked, staging still holds the Parquet from the previous run. Rebuilding curated would mix new `orders` data with old `order_items` data.
+- **Context:** the first version only checked the contract. In the `volume_drop` scenario, the volume pillar raised a critical alert and `orders` lost its certification, but `orders_curated` was still rebuilt with 8% of the orders missing. The problem was detected and propagated anyway.
+- **Decision:** the orchestrator calls `build_curated` only if `curated_blockers()` returns nothing, that is, if `orders` and `order_items` passed their contract in that run **and** none of their pillars is in `anomaly` in that run. Otherwise curated is not rebuilt and keeps its last good version.
+- **Why:** two reasons. If `order_items` was blocked, staging still holds the Parquet from the previous run, and rebuilding curated would mix new `orders` data with old `order_items` data. And if a source was flagged by the pillars, rebuilding would publish exactly the data the observability layer has just marked as suspicious.
+- **What does not block:** `insufficient_history` (absence of evidence prevents certification, not the pipeline) and an incident left open from an earlier snapshot (if the current data is back to normal, it can flow; the open incident still prevents certification).
+- **Cost:** a false positive delays the curated layer by one run, and an anomaly in a source with no SLO also holds curated back. That is accepted: curated is the layer that promises reliable data.
+- **Alternatives considered:** blocking only on critical anomalies (today it gives the same result, since both sources have criticality `high`), and blocking until the sources are certified again (it would leave curated empty in the first runs and stopped after any false positive until a person acts).
 
 ### D13. Declared field-level lineage, with a guard test
 
@@ -160,7 +164,7 @@ The project went through several refactorings to remove duplications that had al
 | `orchestration.local_pipeline` | A table was blocked or an SLO was breached |
 | `src.incidents.cli` | Usage error (unknown id, double resolution, missing RCA) |
 
-An incident without a breached SLO (the `null_spike` on `products`, which only has a freshness SLO) does **not** change the exit code: it shows up in the alert, the incident and the certification. That is the difference between "something changed" and "a commitment was broken".
+An incident without a breached SLO (the `null_spike` on `products`, which only has a freshness SLO) does **not** change the exit code: it shows up in the alert, the incident and the certification. That is the difference between "something changed" and "a commitment was broken". A skipped curated layer follows the same logic: it is reported in the summary (`Curated layer: skipped (...)`), and the exit code still depends only on blocked tables and breached SLOs.
 
 ### D17. Optional, HTTPS-only webhook that never brings the pipeline down
 
@@ -185,14 +189,17 @@ sequenceDiagram
     C-->>O: findings_by_table, slo_results
     O->>Z: run(findings_by_table)
     Z-->>O: certification_results
-    alt orders and order_items ok in this run
+    O->>T: curated_blockers(ingested, findings_by_table)
+    alt sources passed the contract and have no anomaly
         O->>T: run()
+    else
+        O-->>O: curated SKIPPED (keeps its last good version)
     end
     O->>M: run(findings_by_table, certification_results)
     O-->>O: summary + exit code
 ```
 
-The findings from step 3 are passed on to certification and to the dashboard. The pillars are evaluated **once per run**, and when certification or the dashboard run on their own, they call `evaluate_catalog()`, which produces exactly the same result.
+The findings from step 3 are passed on to certification, the curated gate and the dashboard. The pillars are evaluated **once per run**, and when certification or the dashboard run on their own, they call `evaluate_catalog()`, which produces exactly the same result.
 
 ## 3.5 Accepted costs and production alternatives
 

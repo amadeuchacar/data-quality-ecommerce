@@ -47,6 +47,7 @@ STEP 6/6 - Maturity Dashboard
 SUMMARY
 Tables blocked at ingestion: none
 SLOs breached: none
+Curated layer: rebuilt
 Certified tables: 9/9
 ```
 
@@ -88,7 +89,7 @@ Always use `-m` from the project root: imports look like `from src.ingestion...`
 ## 6.4 Automated tests and lint
 
 ```bash
-poetry run pytest                                    # 172 tests pass; 6 are skipped on purpose
+poetry run pytest                                    # 179 tests pass; 6 are skipped on purpose
 poetry run pytest tests/test_pillars.py              # one file
 poetry run pytest -k freshness                       # tests whose name contains "freshness"
 poetry run pytest -v                                 # name of each test
@@ -133,8 +134,9 @@ The results below were obtained on a copy of the project, with 4 clean baseline 
 ```
 [ingestion] Processing 'order_items' ... contract_violation
 [ingestion] completed: 8/9 tables processed successfully.
-[curated] SKIPPED: source tables blocked or missing in this ingestion: ['order_items'].
+[curated] SKIPPED: order_items: blocked or missing at ingestion. The curated layer keeps its last good version: ...
 Tables blocked at ingestion: ['order_items']
+Curated layer: skipped (order_items)
 Certified tables: 9/9
 EXIT=1
 ```
@@ -142,7 +144,7 @@ EXIT=1
 What to notice:
 
 - The circuit breaker blocked only `order_items`; the other 8 tables went through.
-- The curated layer was **not** rebuilt, because one of its sources did not pass in this run.
+- The curated layer was **not** rebuilt, because one of its sources did not pass in this run. It keeps its last good version.
 - Certification stayed at 9/9: the last good snapshot of `order_items` is still within the freshness SLO (24h). If the problem persists for more than 24h, the freshness pillar exposes the table.
 
 **`volume_drop`** (last 8% of `orders` removed)
@@ -152,7 +154,9 @@ What to notice:
   | downstream impact: order_items, order_payments, order_reviews
   [FAILED] orders_volume_stability: 91485 rows (Z-score=-8.00, ...)
 [certify] orders: not certified
+[curated] SKIPPED: orders: anomaly in volume. The curated layer keeps its last good version: ...
 SLOs breached: ['orders_volume_stability']
+Curated layer: skipped (orders)
 EXIT=1
 ```
 
@@ -161,22 +165,26 @@ What to notice:
 - 91,485 rows **pass** the contract (minimum 90,000). Only statistics over the history caught the drop: defense in depth.
 - The deviation of 994 is the 1% floor of the mean (the history was constant). That is why an 8% drop gives exactly z = −8.
 - Severity is `critical` because `orders` has criticality `high`.
-- **After `restore`:** the SLO passes again (MAD pruning discarded the anomalous point from the baseline), but `orders` **stays uncertified** until the incident is resolved.
+- The curated layer was **not** rebuilt: `orders_curated` keeps the 99,441 orders of the last good run instead of publishing 91,485 (D12).
+- **After `restore`:** the SLO passes again (MAD pruning discarded the anomalous point from the baseline), the curated layer is rebuilt, but `orders` **stays uncertified** until the incident is resolved.
 
 **`distribution_shift`** (`freight_value × 3`)
 
 ```
 [ALERT-CRITICAL] [DISTRIBUTION] order_items: freight_value: current mean=59.97 (Z=200.00) | downstream impact: none
   [FAILED] order_items_distribution_stability: freight_value: current mean=59.97 (Z=200.00)
+[curated] SKIPPED: order_items: anomaly in distribution. The curated layer keeps its last good version: ...
+Curated layer: skipped (order_items)
 ```
 
-The contract does not catch the change, because `freight_value` only has `min_value: 0`. Distribution does.
+The contract does not catch the change, because `freight_value` only has `min_value: 0`. Distribution does, and the curated layer is not rebuilt, so `item_total_value` keeps the real freight.
 
 **`null_spike`** (30% of `product_category_name` nulled)
 
 ```
 [ALERT-WARNING] [DISTRIBUTION] products: product_category_name: nulls=31.29% (Z=1590.36) | downstream impact: order_items
 SLOs breached: none
+Curated layer: rebuilt
 EXIT=0
 ```
 
@@ -185,6 +193,7 @@ What to notice:
 - The column is `nullable: true`, so the contract accepts the nulls.
 - There was an incident and certification was lost, but **no SLO was breached** and the exit code is 0, because `products` only has a freshness SLO. Incident and SLO are different mechanisms: one says "something changed", the other says "a commitment was broken".
 - Severity is `warning` (`products` has criticality `medium`).
+- The curated layer **is** rebuilt: `products` is not one of its sources, so an anomaly there does not hold curated back.
 
 **`schema_drift`** (new column `review_channel` in `order_reviews`)
 

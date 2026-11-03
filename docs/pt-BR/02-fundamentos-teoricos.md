@@ -60,6 +60,8 @@ O limite dessa abordagem, que o livro enfatiza, é que testes só pegam o que al
 2. **A tabela barrada não grava snapshot.** Ela vai "envelhecendo" até o SLO de freshness disparar. Assim o bloqueio fica visível para todos os consumidores, sem um mecanismo extra.
 3. **O processo termina com exit code 1**, para que um orquestrador (cron, CI, Airflow) também reaja.
 
+Os pilares funcionam como um **segundo breaker**, entre o staging e a camada curada. O contrato só barra o que alguém declarou como errado. Uma queda de 8% no volume passa por ele, mas é sinalizada pelo pilar de volume. Se uma fonte da camada curada estiver em anomalia, o curated não é reconstruído naquela execução e mantém a última versão boa (ver D12 em [3.3](03-arquitetura.md#33-decisões-de-arquitetura)).
+
 ## 2.4 Dimensões de qualidade (DAMA UK)
 
 **Conceito.** O DAMA UK define seis dimensões de qualidade: completude, unicidade, validade, consistência, atualidade (*timeliness*) e acurácia. Elas expressam a qualidade como **porcentagem**, e não como passa/falha.

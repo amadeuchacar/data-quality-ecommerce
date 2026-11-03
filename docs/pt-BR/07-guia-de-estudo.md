@@ -79,7 +79,7 @@ As respostas curtas estão entre parênteses.
 9. Por que cada pilar é avaliado uma única vez por execução? (Para o alerta, o incidente, o SLO, a certificação e o dashboard nunca discordarem.)
 10. Por que `insufficient_history` passa no SLO, mas impede a certificação? (Reprovar sem dados geraria alarme falso; certificar sem dados daria confiança sem base.)
 11. Por que a severidade não usa a pior criticidade entre as tabelas impactadas? (Com FKs como lineage, quase tudo alcança `orders` e todo alerta viraria crítico.)
-12. Por que a camada curada só é reconstruída se as fontes passaram nesta execução? (Para não misturar dado novo de uma tabela com dado velho de outra.)
+12. Por que a camada curada só é reconstruída se as fontes passaram no contrato e estão sem anomalia nos pilares nesta execução? (Para não misturar dado novo de uma tabela com dado velho de outra, e para não publicar o dado que os pilares acabaram de sinalizar. Um incidente antigo ainda aberto não bloqueia: se o dado atual está normal, ele pode seguir.)
 
 **Código**
 

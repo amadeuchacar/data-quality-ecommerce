@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![pandas](https://img.shields.io/badge/pandas-3.x-150458?logo=pandas&logoColor=white)
 ![Poetry](https://img.shields.io/badge/Poetry-2.x-60A5FA?logo=poetry&logoColor=white)
-![pytest](https://img.shields.io/badge/pytest-172%20tests-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-179%20tests-0A9EDC?logo=pytest&logoColor=white)
 ![Ruff](https://img.shields.io/badge/lint-Ruff-D7FF64?logo=ruff&logoColor=black)
 [![Docs](https://img.shields.io/badge/docs-EN%20%7C%20PT--BR-555555)](docs/README.md)
 
@@ -30,7 +30,7 @@ Each stage of this project pulls one of those levers: contracts prevent incident
 | **1. Ingestion with data contracts** | Does this data meet the agreement? | One YAML contract per table (schema, types, nullability, keys, accepted values, ranges, minimum volume) and a **per-table circuit breaker**: a table that breaks its contract never reaches staging, while the others keep flowing |
 | **2. DAMA quality scorecard** | How good is this data, in %? | Completeness, uniqueness, validity and cross-table consistency on the typed staging layer |
 | **3. Observability** | Did the data change in a way nobody anticipated? | Freshness, volume, schema, distribution and lineage pillars over the run history, SLOs per table and pillar, alerts and incidents with downstream impact and time to detection |
-| **4. Trust and response** | Can I use this data? Who was affected? What did we learn? | Curated layer with **field-level lineage**, table **certification**, an incident CLI (5 Whys RCA, blameless postmortem, time to resolution) and a **maturity dashboard** |
+| **4. Trust and response** | Can I use this data? Who was affected? What did we learn? | Curated layer with **field-level lineage**, rebuilt only from sources with no contract violation or anomaly in the run, table **certification**, an incident CLI (5 Whys RCA, blameless postmortem, time to resolution) and a **maturity dashboard** |
 
 ## Architecture
 
@@ -44,7 +44,10 @@ flowchart LR
     HIST --> CHK[3. Pillars + SLOs]
     CHK -->|anomaly| ALERT[Alert + incident]
     CHK --> CERT[4. Certification]
-    STG -->|sources OK in this run| CUR[(data/curated)]
+    STG --> GATE{Curated gate<br/>sources passed the contract<br/>and have no anomaly?}
+    CHK --> GATE
+    GATE -->|yes| CUR[(data/curated)]
+    GATE -->|no| KEEP[Curated keeps its<br/>last good version]
     CERT --> DASH[Maturity dashboard]
     ALERT --> CLI[Incident CLI<br/>RCA, postmortem, resolution]
     CLI --> CERT
@@ -59,9 +62,9 @@ Behavior is driven by metadata: the catalog (`catalog/inventory.yaml`), one cont
 | Scenario | What breaks | Contract | What catches it |
 |---|---|---|---|
 | `contract_violation` | 10 negative prices in `order_items` | **Blocks** the table | Circuit breaker: only `order_items` stops, the other 8 tables go through and the curated layer is not rebuilt |
-| `volume_drop` | Last 8% of `orders` removed | Passes (91,485 rows ≥ 90,000) | Volume pillar: Z = −8.00, critical alert, 3 downstream tables impacted, SLO breached, certification lost |
-| `distribution_shift` | `freight_value` × 3 | Passes (freight only has `min_value: 0`) | Distribution pillar: mean freight jumps to 59.97 (Z = 200), SLO breached |
-| `null_spike` | 30% of product categories nulled | Passes (`nullable: true`) | Null-rate shift to 31.29% (Z ≈ 1,590): incident and certification lost, no SLO breached |
+| `volume_drop` | Last 8% of `orders` removed | Passes (91,485 rows ≥ 90,000) | Volume pillar: Z = −8.00, critical alert, 3 downstream tables impacted, SLO breached, certification lost, curated layer not rebuilt |
+| `distribution_shift` | `freight_value` × 3 | Passes (freight only has `min_value: 0`) | Distribution pillar: mean freight jumps to 59.97 (Z = 200), SLO breached, curated layer not rebuilt |
+| `null_spike` | 30% of product categories nulled | Passes (`nullable: true`) | Null-rate shift to 31.29% (Z ≈ 1,590): incident and certification lost, no SLO breached; curated is still rebuilt, since `products` is not one of its sources |
 | `schema_drift` | New column in `order_reviews` | Only warns | Schema pillar: SLO breached |
 
 The `volume_drop` run, condensed:
@@ -71,10 +74,11 @@ The `volume_drop` run, condensed:
 [ALERT-CRITICAL] [VOLUME] orders: 91485 rows (Z-score=-8.00, baseline[moving]: mean=99441, std=994). | downstream impact: order_items, order_payments, order_reviews
 [certify] orders: not certified
 SLOs breached: ['orders_volume_stability']
+Curated layer: skipped (orders)
 Certified tables: 8/9
 ```
 
-No fixed rule would have caught it: the contract only demands 90,000 rows. Statistics over the run history did. After the data is restored, the next run raises **no** false alarm, because the anomalous point is pruned from the baseline, and `orders` is certified again only after someone records the resolution through the incident CLI.
+No fixed rule would have caught it: the contract only demands 90,000 rows. Statistics over the run history did, and the curated layer kept the 99,441 orders of the last good run instead of publishing a partial table. After the data is restored, the next run raises **no** false alarm, because the anomalous point is pruned from the baseline, and the curated layer is rebuilt. `orders` is certified again only after someone records the resolution through the incident CLI.
 
 ## What the data revealed
 
@@ -88,12 +92,13 @@ Profiling and cross-table checks surfaced behaviors that look like errors but be
 
 ## Engineering highlights
 
-- **One verdict per (table, pillar) per run.** Alerts, incidents, SLOs, certification and the dashboard read the same evaluation, so they never disagree.
+- **One verdict per (table, pillar) per run.** Alerts, incidents, SLOs, certification, the curated gate and the dashboard read the same evaluation, so they never disagree.
+- **Detection also stops propagation.** An anomaly does not just raise an alert: if it hits a source of the curated layer, curated keeps its last good version instead of publishing the suspicious data.
 - **Every rule lives in one place.** A single function decides whether a value is valid: the contract counts the violations (pass/fail) and the DAMA scorecard turns them into percentages.
 - **Robust anomaly detection.** A moving baseline of the last 10 runs, median/MAD outlier pruning so an old incident does not hide new ones, and a standard deviation floor so a constant history does not alarm on a single missing row.
 - **Absence of evidence is not evidence.** Without enough history a pillar answers `insufficient_history`: it never breaks an SLO, but it never certifies a table either.
 - **No alert fatigue.** Incidents are keyed by (table, pillar, snapshot), so re-running the checks on unchanged data opens nothing new.
-- **Testable by design.** Pure functions with a thin I/O shell: 172 unit tests run in about a second without the dataset, and guard tests keep the contracts in sync with the catalog and the lineage registry in sync with the code.
+- **Testable by design.** Pure functions with a thin I/O shell: 179 unit tests run in about a second without the dataset, and guard tests keep the contracts in sync with the catalog and the lineage registry in sync with the code.
 - **Documented trade-offs.** 17 architecture decisions (context → decision → why → accepted cost), the known limitations and the production alternatives.
 
 ## Quick start
@@ -173,7 +178,7 @@ src/transform/                curated layer
 src/lineage/                  field-level lineage registry
 src/certification/            table certification
 src/reporting/                maturity dashboard
-tests/                        172 unit tests
+tests/                        179 unit tests
 docs/                         full documentation (en / pt-BR)
 data/, reports/               generated at runtime (not versioned)
 ```

@@ -375,7 +375,8 @@ Todos os pilares devolvem um `PillarFinding` (`base.py`): `table`, `pillar`, `st
 
 | Elemento | Detalhe |
 |---|---|
-| `CURATED_SOURCES` | `{"order_items", "orders"}`: tabelas de que a camada depende (usado pelo orquestrador) |
+| `CURATED_SOURCES` | `{"order_items", "orders"}`: tabelas de que a camada depende (usado pelo portão) |
+| `curated_blockers(ingested, findings_by_table)` | Puro. `{fonte: motivo}` para cada fonte que não passou no contrato nesta execução ou tem algum pilar em `anomaly`; vazio = pode reconstruir. `insufficient_history` não bloqueia |
 | `curate_order_items(order_items)` | Puro. Acrescenta `item_total_value = price + freight_value` |
 | `curate_orders(orders, order_items_curated)` | Puro. Acrescenta `delivery_delay_days` (`Int64`) e `order_total_value` (soma por pedido) |
 | `run()` | Lê o staging, grava `data/curated/*.parquet` e devolve as contagens |
@@ -385,6 +386,7 @@ Todos os pilares devolvem um `PillarFinding` (`base.py`): `table`, `pillar`, `st
 - **`item_total_value` e não `total_order_value`:** o valor é de **um item**, e 9.803 pedidos têm mais de um item. O nome anterior induzia quem consome a somar errado: é a mesma armadilha semântica que o catálogo documenta para `customer_id`.
 - **`order_total_value` nulo para pedido sem itens:** "sem itens" (pedido cancelado antes do faturamento) não é o mesmo que "valor zero".
 - **`merge(..., validate="one_to_one")`:** se a agregação por pedido gerar duplicatas por algum erro, o pandas lança exceção em vez de multiplicar linhas em silêncio.
+- **O portão fica ao lado de `CURATED_SOURCES`:** o módulo que sabe de quais tabelas o curated depende é também o que decide se elas estão aptas a serem usadas. O orquestrador só o chama (D12).
 - **`delivery_delay_days` positivo = atraso.** O arredondamento de `.dt.days` foi conferido: como a data estimada é sempre meia-noite, o resultado coincide com a diferença em dias de calendário nas 96.476 entregas.
 
 ---
@@ -452,7 +454,9 @@ Exemplo, com dois níveis de recursão:
 
 ## 4.19 `orchestration/local_pipeline.py`
 
-Seis passos: ingestão → DAMA → pilares → certificação → camada curada (condicionada) → dashboard. Depois imprime o resumo (tabelas barradas, SLOs quebrados, tabelas certificadas) e devolve o exit code (D16). Os findings do passo 3 são repassados aos passos 4 e 6.
+Seis passos: ingestão → DAMA → pilares → certificação → camada curada (condicionada) → dashboard. Depois imprime o resumo (tabelas barradas, SLOs quebrados, camada curada reconstruída ou pulada, tabelas certificadas) e devolve o exit code (D16). Os findings do passo 3 são repassados aos passos 4, 5 e 6.
+
+O passo do curated chama `curated_blockers()` com as tabelas que passaram no contrato e os findings do passo 3. Se ela retornar algo, o passo imprime `[curated] SKIPPED` com o motivo de cada fonte, e o curated mantém a última versão boa (D12).
 
 ---
 
@@ -463,8 +467,8 @@ Cada cenário altera **um** CSV bruto para exercitar um mecanismo específico. A
 | Cenário | Tabela | Alteração | Mecanismo exercitado |
 |---|---|---|---|
 | `contract_violation` | order_items | 10 preços = −1 | Contrato + circuit breaker |
-| `volume_drop` | orders | Remove os últimos 8% das linhas | Pilar de volume (passa no contrato: 91.485 ≥ 90.000) |
-| `distribution_shift` | order_items | `freight_value × 3` | Pilar de distribution (frete não tem máximo no contrato) |
+| `volume_drop` | orders | Remove os últimos 8% das linhas | Pilar de volume (passa no contrato: 91.485 ≥ 90.000) + portão do curated |
+| `distribution_shift` | order_items | `freight_value × 3` | Pilar de distribution (frete não tem máximo no contrato) + portão do curated |
 | `null_spike` | products | 30% das categorias viram nulo | Taxa de nulos (coluna `nullable: true`) |
 | `schema_drift` | order_reviews | Coluna nova `review_channel` | Contrato só avisa (*warning*); pilar de schema dispara |
 
@@ -486,7 +490,7 @@ As saídas reais de cada cenário estão em [6.5](06-execucao-e-testes.md#65-sim
 | `test_slo.py` | Resolução de parâmetros, SLO lendo finding, coerência de `slo.yaml` |
 | `test_incidents.py` | TTD, TTR, deduplicação, dupla resolução, incidentes abertos |
 | `test_checks_runner.py` | Severidade, impacto, deduplicação e `occurrence_time` |
-| `test_curated.py` | Transformações e o teste de guarda do lineage de campo |
+| `test_curated.py` | Transformações, o teste de guarda do lineage de campo e o portão do curated (o que bloqueia e o que não bloqueia) |
 | `test_certification.py` | Os cinco critérios de certificação |
 | `test_rca.py` | RCA, postmortem e a CLI |
 | `test_maturity_dashboard.py` | KPIs e renderização |

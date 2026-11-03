@@ -47,6 +47,7 @@ STEP 6/6 - Maturity Dashboard
 SUMMARY
 Tables blocked at ingestion: none
 SLOs breached: none
+Curated layer: rebuilt
 Certified tables: 9/9
 ```
 
@@ -88,7 +89,7 @@ Sempre use `-m` a partir da raiz do projeto: os imports são do tipo `from src.i
 ## 6.4 Testes automatizados e lint
 
 ```bash
-poetry run pytest                                    # 172 testes passam; 6 são pulados de propósito
+poetry run pytest                                    # 179 testes passam; 6 são pulados de propósito
 poetry run pytest tests/test_pillars.py              # um arquivo
 poetry run pytest -k freshness                       # testes cujo nome contém "freshness"
 poetry run pytest -v                                 # nome de cada teste
@@ -133,8 +134,9 @@ Os resultados abaixo foram obtidos numa cópia do projeto, com 4 execuções lim
 ```
 [ingestion] Processing 'order_items' ... contract_violation
 [ingestion] completed: 8/9 tables processed successfully.
-[curated] SKIPPED: source tables blocked or missing in this ingestion: ['order_items'].
+[curated] SKIPPED: order_items: blocked or missing at ingestion. The curated layer keeps its last good version: ...
 Tables blocked at ingestion: ['order_items']
+Curated layer: skipped (order_items)
 Certified tables: 9/9
 EXIT=1
 ```
@@ -142,7 +144,7 @@ EXIT=1
 O que observar:
 
 - O circuit breaker barrou só `order_items`; as outras 8 tabelas seguiram.
-- A camada curada **não** foi reconstruída, porque uma das fontes não passou nesta execução.
+- A camada curada **não** foi reconstruída, porque uma das fontes não passou nesta execução. Ela mantém a última versão boa.
 - A certificação continuou 9/9: o último snapshot bom de `order_items` ainda está dentro do SLO de freshness (24h). Se o problema persistir por mais de 24h, o pilar de freshness denuncia a tabela.
 
 **`volume_drop`** (últimos 8% de `orders` removidos)
@@ -152,7 +154,9 @@ O que observar:
   | downstream impact: order_items, order_payments, order_reviews
   [FAILED] orders_volume_stability: 91485 rows (Z-score=-8.00, ...)
 [certify] orders: not certified
+[curated] SKIPPED: orders: anomaly in volume. The curated layer keeps its last good version: ...
 SLOs breached: ['orders_volume_stability']
+Curated layer: skipped (orders)
 EXIT=1
 ```
 
@@ -161,22 +165,26 @@ O que observar:
 - 91.485 linhas **passam** no contrato (mínimo 90.000). Só a estatística sobre o histórico pegou a queda: defesa em profundidade.
 - O desvio de 994 é o piso de 1% da média (o histórico era constante). Por isso uma queda de 8% dá exatamente z = −8.
 - A severidade é `critical` porque `orders` tem criticidade `high`.
-- **Depois do `restore`:** o SLO volta a passar (a poda MAD descartou o ponto anômalo da linha de base), mas `orders` **continua sem certificação** até o incidente ser resolvido.
+- A camada curada **não** foi reconstruída: `orders_curated` mantém os 99.441 pedidos da última execução boa, em vez de publicar 91.485 (D12).
+- **Depois do `restore`:** o SLO volta a passar (a poda MAD descartou o ponto anômalo da linha de base), a camada curada é reconstruída, mas `orders` **continua sem certificação** até o incidente ser resolvido.
 
 **`distribution_shift`** (`freight_value × 3`)
 
 ```
 [ALERT-CRITICAL] [DISTRIBUTION] order_items: freight_value: current mean=59.97 (Z=200.00) | downstream impact: none
   [FAILED] order_items_distribution_stability: freight_value: current mean=59.97 (Z=200.00)
+[curated] SKIPPED: order_items: anomaly in distribution. The curated layer keeps its last good version: ...
+Curated layer: skipped (order_items)
 ```
 
-O contrato não pega a mudança, porque `freight_value` só tem `min_value: 0`. A distribuição pega.
+O contrato não pega a mudança, porque `freight_value` só tem `min_value: 0`. A distribuição pega, e a camada curada não é reconstruída, então `item_total_value` mantém o frete real.
 
 **`null_spike`** (30% de `product_category_name` nulos)
 
 ```
 [ALERT-WARNING] [DISTRIBUTION] products: product_category_name: nulls=31.29% (Z=1590.36) | downstream impact: order_items
 SLOs breached: none
+Curated layer: rebuilt
 EXIT=0
 ```
 
@@ -185,6 +193,7 @@ O que observar:
 - A coluna é `nullable: true`, então o contrato aceita os nulos.
 - Houve incidente e a certificação foi perdida, mas **nenhum SLO quebrou** e o exit code é 0, porque `products` só tem SLO de freshness. Incidente e SLO são mecanismos diferentes: um diz "algo mudou", o outro diz "um compromisso foi quebrado".
 - A severidade é `warning` (`products` tem criticidade `medium`).
+- A camada curada **é** reconstruída: `products` não é uma das fontes dela, então uma anomalia ali não segura o curated.
 
 **`schema_drift`** (coluna nova `review_channel` em `order_reviews`)
 

@@ -60,6 +60,8 @@ The limit of this approach, which the book stresses, is that tests only catch wh
 2. **The blocked table does not write a snapshot.** It keeps "aging" until the freshness SLO fires. This makes the block visible to every consumer without any extra mechanism.
 3. **The process exits with code 1**, so an orchestrator (cron, CI, Airflow) can react too.
 
+The pillars act as a **second breaker**, between staging and the curated layer. The contract only stops what someone declared as wrong. An 8% drop in volume passes it but is flagged by the volume pillar. If a source of the curated layer is in anomaly, curated is not rebuilt in that run and keeps its last good version (see D12 in [3.3](03-architecture.md#33-architecture-decisions)).
+
 ## 2.4 Quality dimensions (DAMA UK)
 
 **Concept.** DAMA UK defines six quality dimensions: completeness, uniqueness, validity, consistency, timeliness and accuracy. They express quality as a **percentage** instead of pass/fail.

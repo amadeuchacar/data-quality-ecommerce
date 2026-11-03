@@ -8,7 +8,7 @@
 |---|---|---|---|
 | **Raw** | `data/raw/` | CSV, como veio do Kaggle | Nenhuma: é a fonte |
 | **Staging** | `data/staging/` | Parquet, um por tabela | Cumpriu o contrato e está tipado conforme ele |
-| **Curated** | `data/curated/` | Parquet | Construído só a partir de staging aprovado **na mesma execução**, com campos derivados documentados por lineage |
+| **Curated** | `data/curated/` | Parquet | Construído só a partir de fontes que passaram no contrato **e** não tiveram anomalia nos pilares **na mesma execução**, com campos derivados documentados por lineage |
 
 **Por que três camadas.** Cada camada tem um contrato de confiança diferente. Quem lê o staging sabe que os tipos e as regras foram verificados. Quem lê o curated sabe também de onde vem cada campo derivado. O raw fica intocado, o que permite reprocessar tudo e voltar ao original depois de uma simulação.
 
@@ -78,7 +78,7 @@ Cada decisão segue o formato: contexto → decisão → por quê → custo acei
 
 - **Decisão:** uma violação bloqueia só a tabela que violou; o laço continua.
 - **Por quê:** parar tudo por causa de uma tabela de baixa criticidade (`category_translation`) seria um downtime maior do que o problema.
-- **Custo:** o staging pode ficar com tabelas de execuções diferentes. Mitigação: a camada curada só é reconstruída quando suas fontes passaram **nesta** execução (D12), e o pilar de freshness denuncia a tabela que ficou para trás.
+- **Custo:** o staging pode ficar com tabelas de execuções diferentes. Mitigação: a camada curada só é reconstruída quando suas fontes passaram **nesta** execução, sem anomalia (D12), e o pilar de freshness denuncia a tabela que ficou para trás.
 
 ### D4. Snapshot só para dado aprovado
 
@@ -95,14 +95,14 @@ O projeto passou por várias refatorações para eliminar duplicações que já 
 | "Este valor é válido?" | `column_rule_violations()` | Contrato (conta) e DAMA (porcentagem) |
 | Conversão de tipos | `TYPE_CASTERS` | Contrato (detecta) e ingestão (grava tipado) |
 | Parâmetros de um pilar | `pillar_params()` | Runner, SLOs, certificação, dashboard |
-| Avaliação de uma tabela | `evaluate_table()` / `evaluate_catalog()` | Runner, certificação, dashboard |
+| Avaliação de uma tabela | `evaluate_table()` / `evaluate_catalog()` | Runner, certificação, portão do curated, dashboard |
 
 - **Por quê:** antes da unificação, o runner avaliava freshness com 24h para todas as tabelas, enquanto o SLO de `products` dizia 48h. Com 30h sem carga, abria-se um incidente enquanto o SLO dizia "ok". Com um lugar só, o alerta, o incidente, o SLO, a certificação e o dashboard leem **o mesmo veredito**.
 
 ### D6. Funções puras com casca fina de I/O
 
 - **Decisão:** a lógica fica em funções que recebem e devolvem dados (`score_table`, `curate_orders`, `certify_all`, `compute_kpis`, `evaluate_slos`). Leitura e escrita ficam em funções `run()`.
-- **Por quê:** testabilidade. Os 172 testes rodam em menos de 1 segundo e nenhum lê `data/raw/`. A `consistency()` do DAMA recebe a consulta à tabela pai como parâmetro (injeção de dependência), então o teste passa um dicionário em memória.
+- **Por quê:** testabilidade. Os 179 testes rodam em menos de 1 segundo e nenhum lê `data/raw/`. A `consistency()` do DAMA recebe a consulta à tabela pai como parâmetro (injeção de dependência), então o teste passa um dicionário em memória.
 
 ### D7. Histórico em JSON Lines, append-only
 
@@ -131,10 +131,14 @@ O projeto passou por várias refatorações para eliminar duplicações que já 
 - **Alternativa considerada:** usar a pior criticidade entre todas as tabelas impactadas.
 - **Por que foi descartada:** com chaves estrangeiras como lineage, quase toda tabela alcança `orders` (criticidade `high`), e todo alerta viraria crítico. A severidade vem da tabela de origem, e o incidente **lista** as tabelas impactadas para a triagem.
 
-### D12. Camada curada condicionada à ingestão da mesma execução
+### D12. Camada curada condicionada ao contrato e aos pilares da mesma execução
 
-- **Decisão:** o orquestrador só chama `build_curated` se `orders` e `order_items` passaram no contrato naquela execução.
-- **Por quê:** se `order_items` foi barrada, o staging ainda tem o Parquet da execução anterior. Reconstruir o curated misturaria dado novo de `orders` com dado velho de `order_items`.
+- **Contexto:** a primeira versão só olhava o contrato. No cenário `volume_drop`, o pilar de volume gerou um alerta crítico e `orders` perdeu a certificação, mas `orders_curated` foi reconstruída mesmo assim, com 8% dos pedidos faltando. O problema foi detectado e, ainda assim, se propagou.
+- **Decisão:** o orquestrador só chama `build_curated` se `curated_blockers()` não retornar nada, ou seja, se `orders` e `order_items` passaram no contrato naquela execução **e** nenhum dos seus pilares está em `anomaly` naquela execução. Caso contrário, o curated não é reconstruído e mantém a última versão boa.
+- **Por quê:** são dois motivos. Se `order_items` foi barrada, o staging ainda tem o Parquet da execução anterior, e reconstruir o curated misturaria dado novo de `orders` com dado velho de `order_items`. E se uma fonte foi sinalizada pelos pilares, reconstruir publicaria justamente o dado que a camada de observabilidade acabou de marcar como suspeito.
+- **O que não bloqueia:** `insufficient_history` (ausência de evidência impede a certificação, não o pipeline) e um incidente que ficou aberto de um snapshot anterior (se o dado atual voltou ao normal, ele pode seguir; o incidente aberto continua impedindo a certificação).
+- **Custo:** um falso positivo atrasa a camada curada em uma execução, e uma anomalia numa fonte sem SLO também segura o curated. Isso é aceito: o curated é a camada que promete dado confiável.
+- **Alternativas consideradas:** bloquear só em anomalia crítica (hoje dá o mesmo resultado, já que as duas fontes têm criticidade `high`) e bloquear até as fontes voltarem a ser certificadas (deixaria o curated vazio nas primeiras execuções e parado depois de qualquer falso positivo, até uma pessoa agir).
 
 ### D13. Lineage de campo declarado, com teste de guarda
 
@@ -160,7 +164,7 @@ O projeto passou por várias refatorações para eliminar duplicações que já 
 | `orchestration.local_pipeline` | Tabela barrada ou SLO quebrado |
 | `src.incidents.cli` | Erro de uso (id inexistente, dupla resolução, RCA ausente) |
 
-Um incidente sem SLO quebrado (o `null_spike` em `products`, que só tem SLO de freshness) **não** muda o exit code: ele aparece no alerta, no incidente e na certificação. Essa é a diferença entre "algo mudou" e "um compromisso foi quebrado".
+Um incidente sem SLO quebrado (o `null_spike` em `products`, que só tem SLO de freshness) **não** muda o exit code: ele aparece no alerta, no incidente e na certificação. Essa é a diferença entre "algo mudou" e "um compromisso foi quebrado". Uma camada curada pulada segue a mesma lógica: ela aparece no resumo (`Curated layer: skipped (...)`), e o exit code continua dependendo só de tabelas barradas e SLOs quebrados.
 
 ### D17. Webhook opcional, só HTTPS, que nunca derruba o pipeline
 
@@ -185,14 +189,17 @@ sequenceDiagram
     C-->>O: findings_by_table, slo_results
     O->>Z: run(findings_by_table)
     Z-->>O: certification_results
-    alt orders e order_items ok nesta execução
+    O->>T: curated_blockers(ingested, findings_by_table)
+    alt fontes passaram no contrato e estão sem anomalia
         O->>T: run()
+    else
+        O-->>O: curated SKIPPED (mantém a última versão boa)
     end
     O->>M: run(findings_by_table, certification_results)
     O-->>O: resumo + exit code
 ```
 
-Os findings do passo 3 são repassados à certificação e ao dashboard. Os pilares são avaliados **uma vez por execução**, e quando a certificação ou o dashboard rodam sozinhos, chamam `evaluate_catalog()`, que produz exatamente o mesmo resultado.
+Os findings do passo 3 são repassados à certificação, ao portão do curated e ao dashboard. Os pilares são avaliados **uma vez por execução**, e quando a certificação ou o dashboard rodam sozinhos, chamam `evaluate_catalog()`, que produz exatamente o mesmo resultado.
 
 ## 3.5 Custos aceitos e alternativas para produção
 

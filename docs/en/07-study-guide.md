@@ -79,7 +79,7 @@ Short answers are in parentheses.
 9. Why is each pillar evaluated only once per run? (So the alert, the incident, the SLO, the certification and the dashboard never disagree.)
 10. Why does `insufficient_history` pass the SLO but prevent certification? (Failing without data would raise false alarms; certifying without data would grant trust with no basis.)
 11. Why doesn't severity use the worst criticality among impacted tables? (With FKs as lineage, almost everything reaches `orders`, and every alert would become critical.)
-12. Why is the curated layer rebuilt only if its sources passed in this run? (To avoid mixing new data from one table with old data from another.)
+12. Why is the curated layer rebuilt only if its sources passed the contract and have no pillar anomaly in this run? (To avoid mixing new data from one table with old data from another, and to avoid publishing the data the pillars have just flagged. An old open incident does not block it: if the current data is normal, it can flow.)
 
 **Code**
 
