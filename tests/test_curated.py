@@ -12,7 +12,8 @@ from src.lineage.field_lineage import (
     describe_lineage,
     trace_to_source_fields,
 )
-from src.transform.build_curated import curate_order_items, curate_orders
+from src.quality.pillars.base import PillarFinding
+from src.transform.build_curated import CURATED_SOURCES, curate_order_items, curate_orders, curated_blockers
 
 
 @pytest.fixture
@@ -111,3 +112,59 @@ def test_describe_lineage():
 def test_trace_raises_when_depth_is_exceeded():
     with pytest.raises(RecursionError):
         trace_to_source_fields("orders_curated", "order_total_value", _max_depth=0)
+
+
+# --- Curated gate -----------------------------------------------------------------------
+
+def _findings(table: str, **status_by_pillar: str) -> dict[str, PillarFinding]:
+    return {pillar: PillarFinding(table, pillar, status, "detail") for pillar, status in status_by_pillar.items()}
+
+
+@pytest.fixture
+def healthy() -> dict[str, dict[str, PillarFinding]]:
+    """Every curated source ingested this run with every pillar ok."""
+    return {
+        table: _findings(table, freshness="ok", volume="ok", schema="ok", distribution="ok")
+        for table in CURATED_SOURCES
+    }
+
+
+def test_gate_opens_when_sources_passed_and_have_no_anomaly(healthy):
+    assert curated_blockers(set(CURATED_SOURCES), healthy) == {}
+
+
+def test_gate_blocks_a_source_that_failed_its_contract(healthy):
+    blockers = curated_blockers({"orders"}, healthy)
+
+    assert blockers == {"order_items": "blocked or missing at ingestion"}
+
+
+def test_gate_blocks_a_source_with_an_anomaly_and_names_the_pillars(healthy):
+    healthy["orders"] = _findings("orders", freshness="ok", volume="anomaly", schema="ok", distribution="anomaly")
+
+    assert curated_blockers(set(CURATED_SOURCES), healthy) == {"orders": "anomaly in distribution, volume"}
+
+
+def test_gate_reports_every_blocked_source(healthy):
+    healthy["orders"]["volume"] = PillarFinding("orders", "volume", "anomaly", "detail")
+
+    blockers = curated_blockers({"orders"}, healthy)
+
+    assert blockers == {"order_items": "blocked or missing at ingestion", "orders": "anomaly in volume"}
+    assert list(blockers) == ["order_items", "orders"]       # ordered by table name
+
+
+def test_insufficient_history_does_not_block(healthy):
+    healthy["orders"] = _findings("orders", freshness="ok", volume="insufficient_history", schema="ok")
+
+    assert curated_blockers(set(CURATED_SOURCES), healthy) == {}
+
+
+def test_first_run_without_history_does_not_block():
+    assert curated_blockers(set(CURATED_SOURCES), {}) == {}
+
+
+def test_anomaly_outside_the_curated_sources_does_not_block(healthy):
+    healthy["products"] = _findings("products", distribution="anomaly")
+
+    assert curated_blockers(set(CURATED_SOURCES) | {"products"}, healthy) == {}
