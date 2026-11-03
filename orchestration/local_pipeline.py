@@ -6,12 +6,13 @@ Single entry point that runs the whole pipeline sequentially:
   2. DAMA quality dimensions scorecard on staging
   3. Observability pillars + SLOs + alerts + incidents
   4. Certification of every table
-  5. Curated layer (only when its source tables passed their contract in THIS execution)
+  5. Curated layer (only when its source tables passed their contract and have no pillar anomaly
+     in THIS execution; otherwise curated keeps its last good version)
   6. Maturity dashboard
 
 Steps 1-3 always run: a blocked table simply keeps its last snapshot, so the freshness pillar is
 what surfaces it downstream. The pillars are evaluated once (step 3) and their findings are reused
-by certification and the dashboard, so every report reads the same verdicts.
+by certification, the curated gate and the dashboard, so every step reads the same verdicts.
 
 Exit code: 0 when every table was ingested and every SLO was met, 1 otherwise.
 
@@ -26,7 +27,7 @@ from src.ingestion.load_raw import run as run_ingestion
 from src.quality.checks_runner import run as run_checks
 from src.quality.dimensions_dama import run as run_dama
 from src.reporting.maturity_dashboard import run as run_dashboard
-from src.transform.build_curated import CURATED_SOURCES
+from src.transform.build_curated import curated_blockers
 from src.transform.build_curated import run as run_curated
 
 N_STEPS = 6
@@ -54,11 +55,12 @@ def run() -> int:
     certification_results = run_certification(findings_by_table)
 
     _banner(5, "Curated Layer + Field Lineage")
-    missing = sorted(CURATED_SOURCES - ingested)
-    if missing:
+    blockers = curated_blockers(ingested, findings_by_table)
+    if blockers:
+        reasons = "; ".join(f"{table}: {reason}" for table, reason in blockers.items())
         print(
-            f"[curated] SKIPPED: source tables blocked or missing in this ingestion: {missing}. "
-            "The curated layer is rebuilt only from data that passed contract validation."
+            f"[curated] SKIPPED: {reasons}. The curated layer keeps its last good version: it is "
+            "rebuilt only from sources that passed their contract with no pillar anomaly in this run."
         )
     else:
         run_curated()
@@ -74,6 +76,7 @@ def run() -> int:
     print("=" * 60)
     print(f"Tables blocked at ingestion: {blocked or 'none'}")
     print(f"SLOs breached: {breached or 'none'}")
+    print(f"Curated layer: {'skipped (' + ', '.join(blockers) + ')' if blockers else 'rebuilt'}")
     print(f"Certified tables: {sum(r.certified for r in certification_results)}/{len(certification_results)}")
 
     return 0 if not blocked and not breached else 1

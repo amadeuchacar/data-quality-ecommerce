@@ -5,8 +5,10 @@ Builds the curated layer (data/curated/) from the typed staging layer. Each deri
 has a corresponding entry in the field lineage registry (src/lineage/field_lineage.py).
 
 The transformations are pure functions (DataFrame in, DataFrame out); run() only handles
-reading staging and writing Parquet. The orchestrator calls run() only when the source tables
-passed their contract in the same execution, so curated is never rebuilt from stale staging.
+reading staging and writing Parquet. The orchestrator calls run() only when curated_blockers()
+finds nothing: every source passed its contract in the same execution (curated is never rebuilt
+from stale staging) and none of its pillars is in anomaly (curated is never rebuilt from data the
+observability layer has just flagged). Otherwise curated keeps its last good version.
 
 Usage:
     poetry run python -m src.transform.build_curated
@@ -15,9 +17,40 @@ Usage:
 import pandas as pd
 
 from src.config import PROJECT_ROOT, load_settings
+from src.quality.pillars.base import PillarFinding
 
 # Staging tables each curated table is built from (used by the orchestrator's gate)
 CURATED_SOURCES = {"order_items", "orders"}
+
+
+def curated_blockers(
+    ingested: set[str],
+    findings_by_table: dict[str, dict[str, PillarFinding]],
+) -> dict[str, str]:
+    """
+    Returns, per source table, why the curated layer must NOT be rebuilt in this run (empty = safe).
+
+    A source blocks the rebuild when it did not pass its contract in this run, or when any of its
+    pillars is in "anomaly" for the snapshot of this run. "insufficient_history" does not block:
+    absence of evidence prevents certification, not the pipeline. An incident left open from an
+    earlier snapshot does not block either: if the current data is back to normal, it can flow.
+
+    Args:
+        ingested: tables that passed their contract in this run
+        findings_by_table: pillar findings of this run, as returned by the checks runner
+
+    Returns:
+        A dict {source_table: reason}, ordered by table name.
+    """
+    blockers: dict[str, str] = {}
+    for table in sorted(CURATED_SOURCES):
+        if table not in ingested:
+            blockers[table] = "blocked or missing at ingestion"
+            continue
+        anomalous = sorted(p for p, f in findings_by_table.get(table, {}).items() if f.status == "anomaly")
+        if anomalous:
+            blockers[table] = f"anomaly in {', '.join(anomalous)}"
+    return blockers
 
 
 def curate_order_items(order_items: pd.DataFrame) -> pd.DataFrame:
