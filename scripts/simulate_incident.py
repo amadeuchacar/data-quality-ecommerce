@@ -4,8 +4,10 @@ Incident simulator - breaks the raw data on purpose to exercise each defense of 
 Each scenario changes ONE raw CSV in a way that a specific mechanism should catch:
 
     contract_violation  order_items: negative prices          -> contract blocks the table (circuit breaker)
-    volume_drop         orders: last 8% of rows removed        -> passes the contract, volume pillar fires
-    distribution_shift  order_items: freight_value x3          -> passes the contract, distribution pillar fires
+    volume_drop         orders: last 8% of rows removed        -> passes the contract, volume pillar fires,
+                                                                  curated layer is not rebuilt
+    distribution_shift  order_items: freight_value x3          -> passes the contract, distribution pillar
+                                                                  fires, curated layer is not rebuilt
     null_spike          products: 30% of categories nulled     -> passes the contract, null-rate shift fires
     schema_drift        order_reviews: unexpected new column   -> contract only warns, schema pillar fires
 
@@ -70,14 +72,21 @@ SCENARIOS: dict[str, Scenario] = {
         "order_items", "contract blocks order_items; curated layer is skipped; exit code 1", _negative_prices
     ),
     "volume_drop": Scenario(
-        "orders", "volume anomaly (critical) on orders; SLO orders_volume_stability breached", _drop_last_rows
+        "orders",
+        "volume anomaly (critical) on orders; SLO orders_volume_stability breached; curated layer is skipped",
+        _drop_last_rows,
     ),
     "distribution_shift": Scenario(
-        "order_items", "distribution anomaly on order_items; SLO order_items_distribution_stability breached",
+        "order_items",
+        "distribution anomaly on order_items; SLO order_items_distribution_stability breached; "
+        "curated layer is skipped",
         _triple_freight,
     ),
     "null_spike": Scenario(
-        "products", "distribution anomaly (null rate) on products; certification lost", _null_categories
+        "products",
+        "distribution anomaly (null rate) on products; certification lost; curated layer still rebuilt "
+        "(products is not a curated source)",
+        _null_categories,
     ),
     "schema_drift": Scenario(
         "order_reviews", "contract warning only; schema anomaly; SLO order_reviews_schema_stability breached",
